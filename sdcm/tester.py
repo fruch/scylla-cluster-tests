@@ -39,7 +39,7 @@ from .cluster_libvirt import LoaderSetLibvirt
 from .cluster_openstack import LoaderSetOpenStack
 from .cluster_libvirt import MonitorSetLibvirt
 from .cluster_openstack import MonitorSetOpenStack
-from .cluster import NoMonitorSet, SCYLLA_DIR
+from .cluster import NoMonitorSet, SCYLLA_DIR, NoLoadersSet
 from .cluster_libvirt import ScyllaLibvirtCluster
 from .cluster_openstack import ScyllaOpenStackCluster
 from .cluster import UserRemoteCredentials
@@ -571,13 +571,17 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):
             self.error('Incorrect parameter db_type: %s' %
                        self.params.get('db_type'))
 
-        self.loaders = LoaderSetAWS(
-            ec2_ami_id=self.params.get('ami_id_loader').split(),
-            ec2_ami_username=self.params.get('ami_loader_user'),
-            ec2_instance_type=loader_info['type'],
-            ec2_block_device_mappings=loader_info['device_mappings'],
-            n_nodes=loader_info['n_nodes'],
-            **common_params)
+        if monitor_info['n_nodes'] > 0:
+
+            self.loaders = LoaderSetAWS(
+                ec2_ami_id=self.params.get('ami_id_loader').split(),
+                ec2_ami_username=self.params.get('ami_loader_user'),
+                ec2_instance_type=loader_info['type'],
+                ec2_block_device_mappings=loader_info['device_mappings'],
+                n_nodes=loader_info['n_nodes'],
+                **common_params)
+        else:
+            self.loaders = NoLoadersSet()
 
         if monitor_info['n_nodes'] > 0:
             self.monitors = MonitorSetAWS(

@@ -3755,3 +3755,17 @@ class NoMonitorSet(object):
 
     def collect_logs(self, storing_dir):
         pass
+
+
+class NoLoadersSet(object):
+
+    def __init__(self):
+
+        self.log = SDCMAdapter(logger, extra={'prefix': str(self)})
+        self.nodes = []
+
+    def __str__(self):
+        return 'NoLoadersSet'
+
+    def wait_for_init(self, db_node_address):
+        self.log.warning('Loaders nodes disabled for this run')

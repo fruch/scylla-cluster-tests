@@ -4112,7 +4112,7 @@ class BaseMonitorSet():  # pylint: disable=too-many-public-methods,too-many-inst
                 {
                     'name': 'alternator',
                     'path': 'd/alternator-{version}/{dashboard_name}',
-                    'resolution': '1920px*4000px'
+                    'resolution': '1920px*3000px'
                 }
             ]
 

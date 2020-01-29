@@ -211,7 +211,7 @@ def call() {
                                     env
 
                                     echo "Start send email ..."
-                                    ./docker/env/hydra.sh send-email --logdir /sct --email-recipients "${email_recipients}"
+                                    ./docker/env/hydra.sh send-email --logdir /sct --email-recipients '${email_recipients}'
                                     echo "Email sent"
                                     """
                                 }

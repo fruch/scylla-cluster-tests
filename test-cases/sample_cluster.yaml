@@ -1,0 +1,6 @@
+n_loaders: 0
+instance_type_db: 'i3.xlarge'
+n_monitor_nodes: 1
+n_db_nodes: 3
+
+user_prefix: 'noop-cluster'

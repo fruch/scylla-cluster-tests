@@ -4250,3 +4250,26 @@ class NoMonitorSet():
 
     def get_grafana_screenshot_and_snapshot(self, test_start_time=None):  # pylint: disable=unused-argument,no-self-use,invalid-name
         return {}
+
+
+class NoLoaderSet:
+
+    def __init__(self):
+
+        self.log = SDCMAdapter(LOGGER, extra={'prefix': str(self)})
+        self.nodes = []
+
+    def __str__(self):
+        return 'NoLoaderSet'
+
+    def wait_for_init(self):
+        self.log.info('Loader nodes disabled for this run')
+
+    def get_backtraces(self):
+        pass
+
+    def get_monitor_snapshot(self):
+        pass
+
+    def destroy(self):
+        pass

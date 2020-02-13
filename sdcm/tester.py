@@ -40,7 +40,7 @@ from cassandra.policies import WhiteListRoundRobinPolicy
 
 from sdcm.keystore import KeyStore
 from sdcm import cluster, nemesis, docker, cluster_baremetal, db_stats, wait
-from sdcm.cluster import NoMonitorSet, SCYLLA_DIR
+from sdcm.cluster import NoMonitorSet, NoLoaderSet, SCYLLA_DIR
 from sdcm.cluster import UserRemoteCredentials
 from sdcm.cluster_gce import ScyllaGCECluster
 from sdcm.cluster_gce import LoaderSetGCE
@@ -579,13 +579,16 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             self.log.error('Incorrect parameter db_type: %s',
                            self.params.get('db_type'))
 
-        self.loaders = LoaderSetAWS(
-            ec2_ami_id=self.params.get('ami_id_loader').split(),
-            ec2_ami_username=self.params.get('ami_loader_user'),
-            ec2_instance_type=loader_info['type'],
-            ec2_block_device_mappings=loader_info['device_mappings'],
-            n_nodes=loader_info['n_nodes'],
-            **common_params)
+        if loader_info['n_nodes'] > 0:
+            self.loaders = LoaderSetAWS(
+                ec2_ami_id=self.params.get('ami_id_loader').split(),
+                ec2_ami_username=self.params.get('ami_loader_user'),
+                ec2_instance_type=loader_info['type'],
+                ec2_block_device_mappings=loader_info['device_mappings'],
+                n_nodes=loader_info['n_nodes'],
+                **common_params)
+        else:
+            self.loaders = NoLoaderSet()
 
         if monitor_info['n_nodes'] > 0:
             self.monitors = MonitorSetAWS(

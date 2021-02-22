@@ -6,9 +6,9 @@ import os.path
 import requests
 import click
 
-from sdcm.keystore import KeyStore
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+from sdcm.keystore import KeyStore
 
 
 @click.command(help="Check test configuration file")
@@ -17,8 +17,8 @@ def fix_es_mapping(index_name):
     ks = KeyStore()
     es_conf = ks.get_elasticsearch_credentials()
 
-    mapping_url = "{es_url}/{index_name}/_mapping".format(index_name=index_name, **es_conf)
-    res = requests.get(mapping_url, auth=(es_conf["es_user"], es_conf["es_password"]))
+    mapping_url = "{es_url}/{index_name}/_mappings".format(index_name=index_name, **es_conf)
+    res = requests.get(mapping_url + "?include_type_name=true", auth=(es_conf["es_user"], es_conf["es_password"]))
     output = res.json()[index_name]
 
     output['mappings']['test_stats']['dynamic'] = False
@@ -28,7 +28,7 @@ def fix_es_mapping(index_name):
         type='object')
     output['mappings']['test_stats']['properties']['system_details'] = {"dynamic": False, "properties": {}}
 
-    res = requests.put(mapping_url + "/test_stats",
+    res = requests.put(mapping_url,
                        json=output['mappings'], auth=(es_conf["es_user"], es_conf["es_password"]))
     print(res.text)
     res.raise_for_status()

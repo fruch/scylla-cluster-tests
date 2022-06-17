@@ -484,7 +484,10 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         else:
             self.remoter.sudo("apt-get install -y unzip")
 
-        self.remoter.sudo(shell_script_cmd(f"""\
+        # orig: curl -Lo sb.zip https://github.com/scylladb/scylla-bench/archive/refs/{sb_version}.zip
+        # new:  curl -Lo sb.zip https://github.com/vponomaryov/scylla-bench/archive/refs/heads/add-retry.zip
+        # new:  curl -Lo sb.zip https://github.com/vponomaryov/scylla-bench/archive/refs/heads/add-retry-debug.zip
+        self.remoter.sudo(shell_script_cmd("""\
             rm -rf /usr/local/go || true
             rm -rf /tmp/sb_install || true
             mkdir /tmp/sb_install
@@ -494,7 +497,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             echo 'export GOPATH=$HOME/go' >> $HOME/.bash_profile
             echo 'export PATH=$PATH:/usr/local/go/bin' >> $HOME/.bash_profile
             source $HOME/.bash_profile
-            curl -Lo sb.zip https://github.com/scylladb/scylla-bench/archive/refs/{sb_version}.zip
+            curl -Lo sb.zip https://github.com/vponomaryov/scylla-bench/archive/refs/heads/add-retry-debug.zip
             unzip sb.zip
             cd ./scylla-bench-*
             GO111MODULE=on go install .

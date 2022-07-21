@@ -31,7 +31,6 @@ class PhysicalMachineNode(cluster.BaseNode):
 
     def init(self):
         super().init()
-        self.set_hostname()
         self.run_startup_script()
 
     def _get_public_ip_address(self) -> Optional[str]:
@@ -39,12 +38,6 @@ class PhysicalMachineNode(cluster.BaseNode):
 
     def _get_private_ip_address(self) -> Optional[str]:
         return self._private_ip
-
-    def set_hostname(self):
-        # disabling for now, since doesn't working with Fabric from within docker, and not needed for scylla-cloud,
-        # since not using hostname anywhere
-        # self.remoter.run('sudo hostnamectl set-hostname {}'.format(self.name))
-        pass
 
     def detect_disks(self, nvme=True):  # pylint: disable=unused-argument
         """

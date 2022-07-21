@@ -116,9 +116,6 @@ class GCENode(cluster.BaseNode):
     def region(self):
         return self._gce_service.region.name
 
-    def set_hostname(self):
-        self.log.debug("Hostname for node %s left as is", self.name)
-
     @property
     def is_spot(self):
         return self._instance.extra['scheduling']['preemptible']

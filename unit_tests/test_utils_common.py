@@ -116,12 +116,6 @@ class DummyNode(BaseNode):  # pylint: disable=abstract-method
     def system_log(self, log: str):
         self._system_log = log
 
-    def set_hostname(self) -> None:
-        pass
-
-    def configure_remote_logging(self):
-        pass
-
     def wait_ssh_up(self, verbose=True, timeout=500) -> None:
         pass
 

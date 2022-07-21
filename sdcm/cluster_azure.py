@@ -74,9 +74,6 @@ class AzureNode(cluster.BaseNode):
     def region(self):
         return self._instance.region
 
-    def set_hostname(self):
-        self.log.debug("Hostname for node %s left as is", self.name)
-
     @property
     def is_spot(self):
         return self._instance.pricing_model.is_spot()
@@ -124,10 +121,6 @@ class AzureNode(cluster.BaseNode):
 
     def _get_private_ip_address(self) -> str | None:
         return self._instance.private_ip_address
-
-    def configure_remote_logging(self) -> None:
-        """Remote logging configured upon vm provisioning using UserDataObject"""
-        return
 
 
 class AzureCluster(cluster.BaseCluster):   # pylint: disable=too-many-instance-attributes

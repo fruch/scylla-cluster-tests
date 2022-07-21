@@ -38,20 +38,17 @@ from mypy_boto3_ec2 import EC2Client
 from mypy_boto3_ec2.service_resource import EC2ServiceResource
 from pkg_resources import parse_version
 
-from sdcm import ec2_client, cluster, wait
+from sdcm import ec2_client, cluster
 from sdcm.ec2_client import CreateSpotInstancesError
-from sdcm.provision.aws.utils import configure_eth1_script, network_config_ipv6_workaround_script, \
-    configure_set_preserve_hostname_script
-from sdcm.provision.common.utils import configure_hosts_set_hostname_script
+from sdcm.provision.aws.utils import configure_eth1_script, network_config_ipv6_workaround_script
 from sdcm.provision.helpers.cloud_init import get_cloud_init_config
 from sdcm.provision.scylla_yaml import SeedProvider
-from sdcm.remote import LocalCmdRunner, shell_script_cmd, NETWORK_EXCEPTIONS
+from sdcm.remote import LocalCmdRunner, shell_script_cmd
 from sdcm.sct_events.database import DatabaseLogEvent
 from sdcm.sct_events.filters import DbEventsFilter
 from sdcm.sct_events.system import SpotTerminationEvent
 from sdcm.utils.aws_utils import tags_as_ec2_tags, ec2_instance_wait_public_ip
 from sdcm.utils.common import list_instances_aws, get_ami_tags, MAX_SPOT_DURATION_TIME
-from sdcm.utils.decorators import retrying
 from sdcm.wait import exponential_retry
 
 LOGGER = logging.getLogger(__name__)
@@ -477,24 +474,6 @@ class AWSNode(cluster.BaseNode):
     @property
     def region(self):
         return self._ec2_service.meta.client.meta.region_name
-
-    def _set_hostname(self) -> bool:
-        return self.remoter.sudo(f"hostnamectl set-hostname --static {self.name}").ok
-
-    @retrying(n=3, sleep_time=5, allowed_exceptions=NETWORK_EXCEPTIONS, message="Retrying set_hostname")
-    def set_hostname(self):
-        self.log.debug('Changing hostname to %s', self.name)
-        # Using https://aws.amazon.com/premiumsupport/knowledge-center/linux-static-hostname-rhel7-centos7/
-        # FIXME: workaround to avoid host rename generating errors on other commands
-        if self.is_debian():
-            return
-        if wait.wait_for(func=self._set_hostname, step=10, text='Retrying set hostname on the node', timeout=300):
-            self.log.debug('Hostname has been changed successfully. Apply')
-            script = configure_hosts_set_hostname_script(self.name) + configure_set_preserve_hostname_script()
-            self.remoter.sudo(f"bash -cxe '{script}'")
-        else:
-            self.log.warning('Hostname has not been changed. Continue with old name')
-        self.log.debug('Continue node %s set up', self.name)
 
     @property
     def is_spot(self):

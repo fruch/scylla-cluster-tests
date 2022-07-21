@@ -59,7 +59,6 @@ from sdcm.mgmt import AnyManagerCluster, ScyllaManagerError
 from sdcm.mgmt.common import get_manager_repo_from_defaults, get_manager_scylla_backend
 from sdcm.prometheus import start_metrics_server, PrometheusAlertManagerListener, AlertSilencer
 from sdcm.log import SDCMAdapter
-from sdcm.provision.common.configuration_script import ConfigurationScriptBuilder
 from sdcm.provision.scylla_yaml import ScyllaYamlNodeAttrBuilder
 from sdcm.provision.scylla_yaml.certificate_builder import ScyllaYamlCertificateAttrBuilder
 
@@ -284,9 +283,6 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         # Start task threads after ssh is up, otherwise the dense ssh attempts from task
         # threads will make SCT builder to be blocked by sshguard of gce instance.
         self.wait_ssh_up(verbose=True)
-        if not self.test_config.REUSE_CLUSTER:
-            self.set_hostname()
-            self.configure_remote_logging()
         self.start_task_threads()
         self._init_port_mapping()
 
@@ -2852,20 +2848,6 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         result = self.remoter.run("grep /sct_configured_swapfile /proc/swaps", ignore_status=True)
         if "sct_configured_swapfile" not in result.stdout:
             self.log.warning("Swap file is not used on node %s.\nError details: %s", self, result.stderr)
-
-    def set_hostname(self):
-        self.log.warning('Method set_hostname is not implemented for %s' % self.__class__.__name__)
-
-    def configure_remote_logging(self):
-        if self.parent_cluster.params.get('logs_transport') not in ['rsyslog', 'syslog-ng']:
-            return
-        script = ConfigurationScriptBuilder(
-            syslog_host_port=self.test_config.get_logging_service_host_port(),
-            logs_transport=self.parent_cluster.params.get('logs_transport'),
-            disable_ssh_while_running=False,
-            hostname=self.name,
-        ).to_string()
-        self.remoter.sudo(shell_script_cmd(script, quote="'"))
 
     @property
     def scylla_packages_installed(self) -> List[str]:
@@ -5454,5 +5436,4 @@ class LocalNode(BaseNode):
 
 
 class LocalK8SHostNode(LocalNode):
-    def configure_remote_logging(self):
-        self.log.debug("No need to configure remote logging on k8s")
+    pass

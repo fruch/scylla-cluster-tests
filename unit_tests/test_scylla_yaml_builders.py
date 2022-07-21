@@ -458,12 +458,6 @@ class DummyNode(BaseNode):  # pylint: disable=abstract-method
         # disable all background threads
         pass
 
-    def set_hostname(self):
-        pass
-
-    def configure_remote_logging(self):
-        pass
-
     def set_keep_alive(self):
         pass
 

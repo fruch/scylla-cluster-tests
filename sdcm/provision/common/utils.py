@@ -100,11 +100,6 @@ def configure_rsyslog_set_hostname_script(hostname: str) -> str:
     """)
 
 
-def configure_hosts_set_hostname_script(hostname: str) -> str:
-    return f'grep -P "127.0.0.1[^\\\\n]+{hostname}" /etc/hosts || sed -ri "s/(127.0.0.1[ \\t]+' \
-           f'localhost[^\\n]*)$/\\1\\t{hostname}/" /etc/hosts\n'
-
-
 def configure_sshd_script():
     return dedent("""
     if [ -f "/etc/security/limits.d/20-nproc.conf" ]; then

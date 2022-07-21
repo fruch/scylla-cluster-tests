@@ -117,6 +117,18 @@ class SSHLoggerBase(NodeLoggerBase):
 
 
 class SSHScyllaSystemdLogger(SSHLoggerBase):
+
+    def _wait_ssh_up(self, *args, **kwargs):
+        super()._wait_ssh_up(*args, **kwargs)
+        node = self.node
+        if node.remoter.sudo("which python3", ignore_status=True).failed:
+            if node.distro.is_rhel_like:
+                node.remoter.sudo("yum install -y python3", retry=3)
+            elif node.distro.is_sles:
+                node.remoter.sudo("zypper update -y python3", retry=3)
+            else:
+                node.remoter.sudo('apt-get install -y python3', retry=3)
+
     @staticmethod
     def reformat_output_command(cmd):
         """

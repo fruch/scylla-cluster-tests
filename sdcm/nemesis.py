@@ -1094,6 +1094,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         InfoEvent(message='StartEvent - Adding new node to cluster').publish()
         new_node = self.cluster.add_nodes(
             count=1, dc_idx=self.target_node.dc_idx, enable_auto_bootstrap=True, rack=rack)[0]
+        if self._is_it_on_kubernetes():
+            new_node.refresh_ip_address()
         self.monitoring_set.reconfigure_scylla_monitoring()
         self.set_current_running_nemesis(node=new_node)  # prevent to run nemesis on new node when running in parallel
         new_node.replacement_node_ip = old_node_ip
@@ -2988,6 +2990,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             # pods can change their ip address during the process,
             # so we update the monitor at this point
             if self._is_it_on_kubernetes():
+                target_node.refresh_ip_address()
                 self.monitoring_set.reconfigure_scylla_monitoring()
 
     def disrupt_network_start_stop_interface(self):  # pylint: disable=invalid-name
@@ -3471,6 +3474,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.cluster.wait_for_init(node_list=[new_node], timeout=900,
                                    check_node_health=False)
         self.cluster.wait_for_nodes_up_and_normal(nodes=[new_node])
+        if self._is_it_on_kubernetes():
+            new_node.refresh_ip_address()
         self.monitoring_set.reconfigure_scylla_monitoring()
         return new_node
 

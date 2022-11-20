@@ -30,4 +30,14 @@ nemesis_seed: ['385', '543']
 space_node_threshold: [64424, 64423]
 
 user_prefix: 'longevity-scylla-operator-3h-multitenant'
-cluster_health_check: false
+cluster_health_check: true
+
+k8s_enable_tls: true
+cs_debug: true
+
+k8s_scylla_operator_chart_version: latest
+k8s_scylla_operator_docker_image: scylladb/scylla-operator:latest
+k8s_scylla_operator_helm_repo: https://storage.googleapis.com/scylla-operator-charts/latest
+
+scylla_version: '5.2.0-dev-0.20221207.47a8fad2a2bd'
+docker_image: scylladb/scylla-nightly

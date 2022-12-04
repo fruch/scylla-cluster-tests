@@ -1,12 +1,12 @@
 test_duration: 300
 prepare_write_cmd:  [
-    "cassandra-stress write cl=QUORUM n=5485760 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=80 -pop seq=1..5485760 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
-    "cassandra-stress write cl=QUORUM n=5485760 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=80 -pop seq=5485761..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
+    "cassandra-stress write cl=QUORUM n=5485760 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 throttle=1000/s -pop seq=1..5485760 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
+    "cassandra-stress write cl=QUORUM n=5485760 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 throttle=1000/s -pop seq=5485761..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
 ]
 
 stress_cmd: [
-    "cassandra-stress write cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 throttle=2500/s -pop seq=1..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
-    "cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 throttle=2500/s -pop seq=1..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
+    "cassandra-stress write cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 throttle=1000/s -pop seq=1..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
+    "cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 throttle=1000/s -pop seq=1..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
 ]
 round_robin: true
 
@@ -41,3 +41,9 @@ k8s_scylla_operator_helm_repo: https://storage.googleapis.com/scylla-operator-ch
 
 scylla_version: '5.2.0-dev-0.20221207.47a8fad2a2bd'
 docker_image: scylladb/scylla-nightly
+
+# switch to EBS for MS3
+k8s_scylla_disk_class: 'gp2'
+# Disable hinted handoff to avoid a known issue:
+# https://github.com/scylladb/scylla/issues/4935
+hinted_handoff: 'disabled'

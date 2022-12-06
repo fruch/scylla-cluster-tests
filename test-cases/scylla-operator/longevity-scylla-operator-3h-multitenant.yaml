@@ -43,7 +43,7 @@ scylla_version: '5.2.0-dev-0.20221207.47a8fad2a2bd'
 docker_image: scylladb/scylla-nightly
 
 # switch to EBS for MS3
-k8s_scylla_disk_class: 'gp2'
+k8s_scylla_disk_class: 'gp3'
 # Disable hinted handoff to avoid a known issue:
 # https://github.com/scylladb/scylla/issues/4935
 hinted_handoff: 'disabled'

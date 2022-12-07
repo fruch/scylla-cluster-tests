@@ -47,9 +47,6 @@ LOGGER = logging.getLogger(__name__)
 P = ParamSpec("P")  # pylint: disable=invalid-name
 R = TypeVar("R")  # pylint: disable=invalid-name
 
-# we didn't add configuration for all the rest 'io1', 'io2', 'gp2', 'sc1', 'st1'
-SUPPORTED_EBS_STORAGE_CLASSES = ['gp3', ]
-
 
 # pylint: disable=too-many-instance-attributes
 class EksNodePool(CloudK8sNodePool):
@@ -218,11 +215,10 @@ class EksTokenUpdateThread(TokenUpdateThread):
 
 
 # pylint: disable=too-many-instance-attributes
-class EksCluster(KubernetesCluster, EksClusterCleanupMixin):  # pylint: disable=too-many-public-methods
+class EksCluster(KubernetesCluster, EksClusterCleanupMixin):
     POOL_LABEL_NAME = 'eks.amazonaws.com/nodegroup'
     IS_NODE_TUNING_SUPPORTED = True
     NODE_PREPARE_FILE = sct_abs_path("sdcm/k8s_configs/eks/scylla-node-prepare.yaml")
-    STORAGE_CLASS_FILE = sct_abs_path("sdcm/k8s_configs/eks/storageclass.yaml")
     pools: Dict[str, EksNodePool]
     short_cluster_name: str
 
@@ -309,12 +305,6 @@ class EksCluster(KubernetesCluster, EksClusterCleanupMixin):  # pylint: disable=
             addonName='vpc-cni',
             addonVersion=self.vpc_cni_version
         )
-        if self.params.get('k8s_scylla_disk_class') in SUPPORTED_EBS_STORAGE_CLASSES:
-            # TODO: think if we need to pin version, or select base on k8s version
-            self.eks_client.create_addon(
-                clusterName=self.short_cluster_name,
-                addonName='aws-ebs-csi-driver',
-            )
         if wait_till_functional:
             wait_for(lambda: self.cluster_status == 'ACTIVE', step=60, throw_exc=True, timeout=1200,
                      text=f'Waiting till EKS cluster {self.short_cluster_name} become operational')
@@ -344,14 +334,6 @@ class EksCluster(KubernetesCluster, EksClusterCleanupMixin):  # pylint: disable=
         self.create_eks_cluster()
         LOGGER.info("Patch kubectl config")
         self.patch_kubectl_config()
-        LOGGER.info("Create storage class")
-        self.create_ebs_storge_class()
-
-    def create_ebs_storge_class(self):
-        if self.params.get('k8s_scylla_disk_class') in SUPPORTED_EBS_STORAGE_CLASSES:
-            tags_specification = "\n".join(
-                [f'  tagSpecification_{i}: "{k}={v}"' for i, (k, v) in enumerate(self.tags.items(), start=1)])
-            self.apply_file(self.STORAGE_CLASS_FILE, environ=dict(EXTRA_TAG_SPEC=tags_specification))
 
     def tune_network(self):
         """Tune networking on all nodes of an EKS cluster to reduce number of reserved IPs.

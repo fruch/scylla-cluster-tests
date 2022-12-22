@@ -16,7 +16,7 @@ eks_nodegroup_role_arn: 'arn:aws:iam::797456418907:role/helm-test-worker-nodes-N
 # NOTE: https://docs.aws.amazon.com/eks/latest/userguide/managing-vpc-cni.html
 eks_vpc_cni_version: 'v1.11.3-eksbuild.1'
 
-scylla_version: '4.5.3'
+scylla_version: '5.0.5'
 scylla_mgmt_agent_version: '3.0.0'
 k8s_cert_manager_version: '1.8.0'
 
@@ -27,7 +27,10 @@ k8s_loader_cluster_name: 'sct-loaders'
 k8s_scylla_cluster_name: 'sct-cluster'
 k8s_scylla_datacenter: 'us-east1-b'
 k8s_scylla_disk_gi: 500
-k8s_scylla_disk_class: 'local-raid-disks'
+
+# NOTE: for testing EBS with 14 clients multitenant setup
+# k8s_scylla_disk_class: 'local-raid-disks'
+k8s_scylla_disk_class: 'gp2'
 
 # NOTE: If 'k8s_scylla_operator_docker_image' not set then the one from helm chart will be used.
 # To test nightly builds define it like this: 'scylladb/scylla-operator:nightly'

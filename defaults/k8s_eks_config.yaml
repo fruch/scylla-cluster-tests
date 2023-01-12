@@ -57,3 +57,8 @@ backup_bucket_location: 'minio-bucket'
 
 # since we can't install minio in since k8s v1.23 (not without ebs-csi-driver setup)
 use_mgmt: false
+
+# using image from master to avoid issue to start stress when nodes are down
+# that was fixed in https://github.com/scylladb/scylla-tools-java/pull/314
+stress_image:
+  cassandra-stress: "scylladb/scylla-nightly:5.2.0-dev-0.20230112.95031074a504"

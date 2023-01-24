@@ -27,7 +27,7 @@ LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=too-many-public-methods
 class AwsRegion:
-    SCT_VPC_NAME = "SCT-2-vpc"
+    SCT_VPC_NAME = "Volumez-vpc"
     SCT_VPC_CIDR_TMPL = "10.{}.0.0/16"
     SCT_SECURITY_GROUP_NAME = "SCT-2-sg"
     SCT_TEST_SECURITY_GROUP_NAME_TMPL = "SCT-2-sg-{}"

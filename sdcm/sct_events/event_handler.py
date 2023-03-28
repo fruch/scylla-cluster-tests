@@ -35,6 +35,7 @@ class EventsHandler(BaseEventsProcess[Tuple[str, Any], None], threading.Thread):
      Handlers are created to gather additional information for issue investigation purposes."""
     handlers = {
         "CassandraStressLogEvent.SchemaDisagreement": SchemaDisagreementHandler(),
+        "ClusterHealthValidatorEvent.NodeStatus": SchemaDisagreementHandler(),
     }
 
     def run(self) -> None:

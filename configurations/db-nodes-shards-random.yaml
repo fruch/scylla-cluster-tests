@@ -1,1 +1,3 @@
 db_nodes_shards_selection: "random"
+nemesis_class_name: "DecommissionMonkey"
+nemesis_interval: 15

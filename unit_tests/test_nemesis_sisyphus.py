@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+import random
+
 import yaml
 
 from sdcm.nemesis import Nemesis, SisyphusMonkey
@@ -84,3 +86,18 @@ def test_list_all_available_nemesis(generate_file=True):
         static_nemesis_list = yaml.safe_load(nemesis_file)
 
     assert static_nemesis_list == disruptions_dict
+
+
+def test_generate_specific_nemesis_seed():
+    tester = FakeTester()
+    targeted_nemesis_function = 'disrupt_rolling_restart_cluster'
+
+    for _ in range(50):
+        tester.params["nemesis_seed"] = str(random.randint(1, 99))
+        sisyphus_nemesis = SisyphusMonkey(tester, None)
+        collected_disrupt_methods_names = [disrupt.__name__ for disrupt in sisyphus_nemesis.disruptions_list]
+        first_five_functions = collected_disrupt_methods_names[:5]
+        if targeted_nemesis_function in first_five_functions:
+            break
+
+    print(f'nemesis_seed: {tester.params["nemesis_seed"]}')

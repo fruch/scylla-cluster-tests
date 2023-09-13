@@ -17,3 +17,7 @@ ssh_transport: 'libssh2'
 user_prefix: 'longevity-harry-2h'
 space_node_threshold: 64424
 use_mgmt: false
+
+append_scylla_yaml: |
+  commitlog_sync: batch
+  commitlog_sync_batch_window_in_ms: 2

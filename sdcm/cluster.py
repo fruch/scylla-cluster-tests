@@ -4660,6 +4660,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
             random.shuffle(nodes_to_restart)
         self.log.info("Going to restart Scylla on %s", [n.name for n in nodes_to_restart])
         for node in nodes_to_restart:
+            node.run_nodetool("drain", timeout=15 * 60, coredump_on_timeout=True)
             node.stop_scylla(verify_down=True)
             node.start_scylla(verify_up=True)
             self.log.debug("'%s' restarted.", node.name)

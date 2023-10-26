@@ -1672,6 +1672,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
         if self.init_system == "systemd":
             self.fix_scylla_server_systemd_config()
+            self.disable_cordump_cleanups()
 
     def fix_scylla_server_systemd_config(self):
         systemd_version = get_systemd_version(self.remoter.run("systemctl --version", ignore_status=True).stdout)
@@ -1685,6 +1686,13 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                 EOF
                 systemctl daemon-reload
             """))
+
+    def disable_cordump_cleanups(self):
+        # disable coredump cleanups completely
+        with remote_file(remoter=self.remoter,
+                         remote_path='/etc/systemd/coredump.conf',
+                         sudo=True) as fobj:
+            fobj.write(fobj.read() + "\nMaxUse=0\n")
 
     def process_scylla_args(self, append_scylla_args=''):
         if append_scylla_args:

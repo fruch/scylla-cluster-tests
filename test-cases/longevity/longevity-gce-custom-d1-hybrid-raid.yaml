@@ -16,15 +16,15 @@ nemesis_interval: 5
 
 user_prefix: 'longevity-3h-custom-d1'
 
-gce_n_local_ssd_disk_db: 16
-gce_pd_ssd_disk_size_db: 6000
+gce_n_local_ssd_disk_db: 4
+gce_pd_ssd_disk_size_db: 1500
 gce_setup_hybrid_raid: true
 
 use_preinstalled_scylla: true
 
 scylla_d_overrides_files: [
-  'scylla-qa-internal/custom_d1/workload1/scylla.d/io_properties.yaml',
-  'scylla-qa-internal/custom_d1/workload1/scylla.d/cpuset.conf',
-  'scylla-qa-internal/custom_d1/workload1/scylla.d/memory.conf',
-  'scylla-qa-internal/custom_d1/workload1/scylla.d/io.conf',
+#  'scylla-qa-internal/custom_d1/workload1/scylla.d/io_properties.yaml',
+#  'scylla-qa-internal/custom_d1/workload1/scylla.d/cpuset.conf',
+#  'scylla-qa-internal/custom_d1/workload1/scylla.d/memory.conf',
+#  'scylla-qa-internal/custom_d1/workload1/scylla.d/io.conf',
 ]

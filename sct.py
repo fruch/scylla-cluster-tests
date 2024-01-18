@@ -1532,14 +1532,25 @@ def configure_aws_peering(regions):
                   f" azure: {AzureSctRunner.SOURCE_IMAGE_REGION}) the image will be first created in the"
                   f" source region and then copied to the chosen one.")
 @cloud_provider_option
-@click.option("-r", "--region", required=True, type=CloudRegion(), help="Cloud region")
-@click.option("-z", "--availability-zone", default="", type=str, help="Name of availability zone, ex. 'a'")
+@click.option("-r", "--region", default="*", type=CloudRegion(), help="Cloud region")
+@click.option("-z", "--availability-zone", default="a", type=str, help="Name of availability zone, ex. 'a'")
 def create_runner_image(cloud_provider, region, availability_zone):
     if cloud_provider == "aws":
         assert len(availability_zone) == 1, f"Invalid AZ: {availability_zone}, availability-zone is one-letter a-z."
     add_file_logger()
-    sct_runner = get_sct_runner(cloud_provider=cloud_provider, region_name=region, availability_zone=availability_zone)
-    sct_runner.create_image()
+    if cloud_provider == "azure" and region == "*":
+        region = 'eastus'
+    if cloud_provider == "gce" and region == "*":
+        region = 'us-east1'
+    if cloud_provider == "aws" and region == "*":
+        for aws_region in SCTConfiguration.aws_supported_regions:
+            sct_runner = get_sct_runner(cloud_provider=cloud_provider, region_name=aws_region,
+                                        availability_zone=availability_zone)
+            sct_runner.create_image()
+    else:
+        sct_runner = get_sct_runner(cloud_provider=cloud_provider, region_name=region,
+                                    availability_zone=availability_zone)
+        sct_runner.create_image()
 
 
 @cli.command("create-runner-instance", help="Create an SCT runner instance in the selected cloud region")

@@ -49,6 +49,8 @@ class CloudRegion(click.ParamType):
     def convert(self, value, param, ctx):
         cloud_provider = self.cloud_provider or ctx.params["cloud_provider"]
         regions = get_all_regions(cloud_provider)
+        if value == "*":
+            return value
         if not regions:
             self.fail(f"unknown cloud provider: {cloud_provider}")
         if cloud_provider == "azure":

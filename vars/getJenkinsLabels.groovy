@@ -23,9 +23,9 @@ def call(String backend, String region=null, String datacenter=null, String loca
                           'aws-eu-north-1': 'aws-sct-builders-eu-north-1-v2',
                           'aws-eu-central-1': 'aws-sct-builders-eu-central-1-v2',
                           'aws-us-east-1' : 'aws-sct-builders-us-east-1-v2',
-                          'gce-us-east1': "${gcp_project}-builders-us-east1",
-                          'gce-us-west1': "${gcp_project}-builders-us-west1",
-                          'gce': "${gcp_project}-builders",
+                          'gce-us-east1': "${gcp_project}-builders-us-east1-template",
+                          'gce-us-west1': "${gcp_project}-builders-us-west1-template",
+                          'gce': "${gcp_project}-builders-us-east1-template",
                           'docker': 'aws-sct-builders-eu-west-1-v2',
                           'azure-eastus': 'azure-sct-builders']
 

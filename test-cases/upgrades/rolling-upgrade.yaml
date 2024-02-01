@@ -41,3 +41,5 @@ gemini_seed: 66
 gemini_schema_url: 'https://s3.amazonaws.com/scylla-gemini/Binaries/schema.json' # currently is not used
 
 use_preinstalled_scylla: false
+
+append_scylla_args: '--blocked-reactor-notify-ms 25 --abort-on-lsa-bad-alloc 1 --abort-on-seastar-bad-alloc --abort-on-internal-error 1 --abort-on-ebadf 1 --enable-sstable-key-validation 1 --logger-log-level repair=trace'

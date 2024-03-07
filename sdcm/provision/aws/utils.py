@@ -286,8 +286,11 @@ def configure_eth1_script():
     return dedent(r"""
         if grep -qi "ubuntu" /etc/os-release; then
 
-            ETH1_IP_ADDRESS=`ip route show | grep eth1 | grep -oPm1 'src \K[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*'`
-            ETH1_CIDR_BLOCK=`ip route show | grep eth1 | grep -oPm1 '\K[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*/[0-9]*'`
+            # get the name of the main interface, so we can find the other interfaces
+            ETH0_INTERFACE_NAME=`ip route get 8.8.8.8 | sed -n 's/.* dev \([^\ ]*\) .*/\1/p'`
+
+            ETH1_IP_ADDRESS=`ip route show | grep -v $ETH0_INTERFACE_NAME |  grep 'en[a-z0-9]*\|eth1' | grep -oPm1 'src \K[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*'`
+            ETH1_CIDR_BLOCK=`ip route show | grep -v $ETH0_INTERFACE_NAME | grep 'en[a-z0-9]*\|eth1' | grep -oPm1 '\K[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*/[0-9]*'`
             ETH1_SUBNET=`echo ${ETH1_CIDR_BLOCK} | grep -oP '\\K/\\d+'`
 
             bash -c "echo '
@@ -298,11 +301,17 @@ def configure_eth1_script():
                 eth0:
                   dhcp4: yes
                   dhcp6: yes
+                  match:
+                    name: ["eth*", "en*"]
+                  set-name: eth0
                 eth1:
                   addresses:
                    - ${ETH1_IP_ADDRESS}${ETH1_SUBNET}
                   dhcp4: no
                   dhcp6: no
+                  match:
+                    name: ["eth*", "en*"]
+                  set-name: eth1
                   routes:
                    - to: 0.0.0.0/0
                      via: 10.0.0.1 # Default gateway

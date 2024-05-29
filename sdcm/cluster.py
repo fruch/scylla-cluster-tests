@@ -3848,9 +3848,15 @@ def wait_for_init_wrap(method):  # pylint: disable=too-many-statements
                 current_setup_thread.start()
             while len(setup_results) != len(node_list):
                 verify_node_setup_or_startup(start_time, setup_queue, setup_results)
-            # startup serially
+            # startup
             for node in node_list:
-                node_startup(node, startup_queue)
+                if isinstance(cl_inst, BaseScyllaCluster) and cl_inst.parallel_startup:
+                    threading.Thread(target=node_startup, args=(node, startup_queue), daemon=True).start()
+                else:
+                    node_startup(node, startup_queue)
+                    if isinstance(cl_inst, BaseScyllaCluster):
+                        LOGGER.info("switching to parallel nodes startup")
+                        cl_inst.parallel_startup = True
             while len(startup_results) != len(node_list):
                 verify_node_setup_or_startup(start_time, startup_queue, startup_results)
             # Check DB nodes for UN
@@ -3888,6 +3894,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
         self.test_config = TestConfig()
         self._node_cycle = None
         self.params = kwargs.get('params', {})
+        self.parallel_startup = False
         super().__init__(*args, **kwargs)
 
     def get_node_ips_param(self, public_ip=True):

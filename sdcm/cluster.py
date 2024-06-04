@@ -1676,6 +1676,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                 cat <<EOF > /etc/systemd/system/scylla-server.service.d/override.conf
                 [Service]
                 FinalKillSignal=SIGABRT
+                Restart=no
                 EOF
                 systemctl daemon-reload
             """))

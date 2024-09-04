@@ -56,7 +56,7 @@ from sdcm.utils.features import CONSISTENT_TOPOLOGY_CHANGES_FEATURE
 from sdcm.wait import wait_for
 from sdcm.paths import SCYLLA_YAML_PATH
 from sdcm.rest.raft_upgrade_procedure import RaftUpgradeProcedure
-from test_lib.sla import create_sla_auth, ServiceLevel
+from test_lib.sla import create_sla_auth
 
 NUMBER_OF_ROWS_FOR_TRUNCATE_TEST = 10
 
@@ -1428,11 +1428,6 @@ class UpgradeCustomTest(UpgradeTest):
         user_profiles, duration_per_cs_profile = self.parse_cs_user_profiles_param(cs_user_profiles)
         entire_write_thread_pool = self.run_cs_user_profiles(cs_profiles=user_profiles,
                                                              duration_per_cs_profile=duration_per_cs_profile)
-
-        node = self.db_cluster.nodes[0]
-
-        with self.db_cluster.cql_connection_patient(node) as session:
-            ServiceLevel(session=session, name='$maintenance').create()
 
         # Let wait for start writing data
         for stress_cmd in user_profiles:

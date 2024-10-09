@@ -2647,6 +2647,7 @@ class BaseNode(AutoSshContainerMixin):  # pylint: disable=too-many-instance-attr
         :param long_running: command would be executed on host, and polled for results
         :return: Remoter result object
         """
+        options = '--logger-log-level seastar=trace '
         cmd = self._gen_nodetool_cmd(sub_cmd, args, options)
 
         with NodetoolEvent(nodetool_command=sub_cmd,

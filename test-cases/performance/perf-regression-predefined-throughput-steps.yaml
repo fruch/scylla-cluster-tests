@@ -40,7 +40,7 @@ n_db_nodes: 3
 n_loaders: 4
 n_monitor_nodes: 1
 
-instance_type_db: 'i4i.4xlarge'
+instance_type_db: 'i4i.16xlarge'
 instance_type_loader: 'c7i.8xlarge'
 instance_type_monitor: 't3.small'
 use_capacity_reservation: true
@@ -67,3 +67,13 @@ use_placement_group: true
 use_prepared_loaders: false
 stress_image:
   cassandra-stress: 'scylladb/cassandra-stress:3.13.0'
+
+append_scylla_node_exporter_args: '--collector.perf'
+
+scylla_d_overrides_files: [
+  'configurations/aws/i4i_4xlarge/cpuset.conf',
+  'configurations/aws/i4i_4xlarge/io.conf',
+  'configurations/aws/i4i_4xlarge/io_properties.yaml',
+  'configurations/aws/i4i_4xlarge/memory.conf',
+  'configurations/aws/i4i_4xlarge/perftune.yaml',
+]

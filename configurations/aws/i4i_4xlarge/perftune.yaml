@@ -1,0 +1,9 @@
+cpu_mask: '0x0000ffff'
+irq_core_auto_detection_ratio: 16
+irq_cpu_mask: '0x00000101'
+nic:
+- eth0
+tune:
+- net
+- system
+tune_clock: true

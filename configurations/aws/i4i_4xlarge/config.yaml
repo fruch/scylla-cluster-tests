@@ -1,0 +1,7 @@
+scylla_d_overrides_files: [
+  'configurations/aws/i4i_4xlarge/cpuset.conf',
+  'configurations/aws/i4i_4xlarge/io.conf',
+  'configurations/aws/i4i_4xlarge/io_properties.yaml',
+  'configurations/aws/i4i_4xlarge/memory.conf',
+  'configurations/aws/i4i_4xlarge/perftune.yaml',
+]

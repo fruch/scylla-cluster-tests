@@ -1,4 +1,4 @@
-# SCT - Scylla Cluster Tests
+# 🧪 SCT - Scylla Cluster Tests
 
 SCT tests are designed to test Scylla database on physical/virtual servers under high read/write load.
 Currently, the tests are run using built in unittest

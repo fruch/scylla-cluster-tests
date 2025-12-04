@@ -13,7 +13,6 @@ def createRunConfiguration(String backend) {
         backend: backend,
         test_name: 'longevity_test.LongevityTest.test_custom_time',
         test_config: 'test-cases/PR-provision-test.yaml',
-        availability_zone: 'a',
         scylla_version: scylla_version,
         region: 'eu-west-1',
     ]

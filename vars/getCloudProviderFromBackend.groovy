@@ -9,7 +9,7 @@ def call(String backend) {
         'gce-siren': 'gce',
         'azure': 'azure',
         'docker': 'aws',
-        'baremetal': 'aws',
+        'baremetal': 'oci',
         'docker-fips': 'aws-fips',
         ]
     if (!backend) {

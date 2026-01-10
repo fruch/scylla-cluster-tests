@@ -63,7 +63,6 @@ class PhysicalMachineNode(cluster.BaseNode):
     def init(self):
         super().init()
         self.set_hostname()
-        self.run_startup_script()
 
     def wait_for_cloud_init(self):
         pass
@@ -93,10 +92,13 @@ class PhysicalMachineNode(cluster.BaseNode):
     def _get_private_ip_address(self) -> Optional[str]:
         return self._private_ip
 
+    def _set_keep_duration(self, duration_in_hours: int) -> None:
+        self.log.warning(
+            "_set_keep_duration is not implemented for PhysicalMachineNode, since there's no tagging for baremetal nodes."
+        )
+
     def set_hostname(self):
-        # disabling for now, since doesn't working with Fabric from within docker, and not needed for scylla-cloud,
-        # since not using hostname anywhere
-        # self.remoter.run('sudo hostnamectl set-hostname {}'.format(self.name))
+        # disabling since for baremetal we aren't going to fuss with their names, they are preconfigured
         pass
 
     def reboot(self, hard=True, verify_ssh=True):
@@ -140,8 +142,11 @@ class PhysicalMachineCluster(cluster.BaseCluster):
         node.init()
         return node
 
+    def _reuse_cluster_setup(self, node):
+        node.run_startup_script()  # Reconfigure syslog-ng.
+
     def add_nodes(self, count, ec2_user_data="", dc_idx=0, rack=0, enable_auto_bootstrap=False, instance_type=None):
-        assert instance_type is None, "baremetal can provision diffrent types"
+        assert instance_type is None, "baremetal can't provision different types"
         for node_index in range(count):
             node_name = "%s-%s" % (self.node_prefix, node_index)
             self.nodes.append(

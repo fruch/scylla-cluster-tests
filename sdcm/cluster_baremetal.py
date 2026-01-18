@@ -44,6 +44,7 @@ class PhysicalMachineNode(cluster.BaseNode):
         credentials,
         base_logdir=None,
         node_prefix=None,
+        dc_idx=0,
     ):
         ssh_login_info = {
             "hostname": None,
@@ -58,6 +59,7 @@ class PhysicalMachineNode(cluster.BaseNode):
             base_logdir=base_logdir,
             ssh_login_info=ssh_login_info,
             node_prefix=node_prefix,
+            dc_idx=dc_idx,
         )
 
     def init(self):
@@ -129,7 +131,7 @@ class PhysicalMachineCluster(cluster.BaseCluster):
     def ssh_username(self) -> str:
         return self._ssh_username
 
-    def _create_node(self, name, public_ip, private_ip):
+    def _create_node(self, name, public_ip, private_ip, dc_idx):
         node = PhysicalMachineNode(
             name,
             parent_cluster=self,
@@ -138,6 +140,7 @@ class PhysicalMachineCluster(cluster.BaseCluster):
             credentials=self.credentials[0],
             base_logdir=self.logdir,
             node_prefix=self.node_prefix,
+            dc_idx=dc_idx,
         )
         node.init()
         return node
@@ -150,7 +153,9 @@ class PhysicalMachineCluster(cluster.BaseCluster):
         for node_index in range(count):
             node_name = "%s-%s" % (self.node_prefix, node_index)
             self.nodes.append(
-                self._create_node(node_name, self._node_public_ips[node_index], self._node_private_ips[node_index])
+                self._create_node(
+                    node_name, self._node_public_ips[node_index], self._node_private_ips[node_index], dc_idx=dc_idx
+                )
             )
 
 

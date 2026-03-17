@@ -18,6 +18,7 @@ import pprint
 import logging
 import collections
 import re
+import tempfile
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -28,7 +29,7 @@ import jinja2
 from sdcm.es import ES
 from sdcm.test_config import TestConfig
 from sdcm.db_stats import TestStatsMixin
-from sdcm.send_email import Email, BaseEmailReporter
+from sdcm.utils.cloud_monitor.cloud_monitor import Email
 from sdcm.sct_events import Severity
 from sdcm.utils.common import format_timestamp
 from sdcm.utils.es_queries import (
@@ -184,10 +185,9 @@ class BaseResultsAnalyzer:
             self.log.warning("Won't send email (recipients: %s)", self._email_recipients)
 
     def save_html_to_file(self, results, file_name, template_file):
-        email = BaseEmailReporter()
-        report_file = os.path.join(email.logdir, file_name)
+        report_file = os.path.join(tempfile.mkdtemp(), file_name)
         self.log.debug("report_file = %s", report_file)
-        email.save_html_to_file(results, report_file, template_file=template_file)
+        self.render_to_html(results, html_file_path=report_file, template=template_file)
         self.log.debug("HTML successfully saved to local file")
         return report_file
 

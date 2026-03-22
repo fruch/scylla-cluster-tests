@@ -119,13 +119,14 @@
       "phases_done": 0
     },
     {
-      "id": "cassandra-oracle-cluster",
-      "title": "Cassandra Oracle Cluster",
-      "domain": "stress-tools",
-      "status": "pending_pr",
-      "pr": 13916,
-      "phases_total": null,
-      "phases_done": 0
+      "id": "cassandra-cluster-support",
+      "title": "Cassandra Cluster Support",
+      "file": "infrastructure/cassandra-cluster-support.md",
+      "domain": "cluster",
+      "status": "in_progress",
+      "pr": 14164,
+      "phases_total": 5,
+      "phases_done": 1
     },
     {
       "id": "amazon-emr-spark-migrator",

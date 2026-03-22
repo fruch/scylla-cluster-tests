@@ -327,7 +327,7 @@ Format version of the user-data to use for scylla images,<br>default to what tag
 
 Version of scylla to use as oracle cluster with gemini tests, ex. '3.0.11'<br>Automatically lookup AMIs for formal versions.<br>WARNING: can't be used together with 'ami_id_db_oracle'
 
-**default:** 2025.4
+**default:** 2024.1
 
 **type:** str
 
@@ -466,9 +466,9 @@ When define true, will install scylla management
 
 ## **agent** / SCT_AGENT
 
-Configuration for SCT agent - a lightweight service for remote command execution.                 When enabled, replaces SSH-based command execution with RESTful API calls for DB nodes.<br>Configuration options:<br>- enabled: bool - enable agent (required)<br>- port: int - agent HTTP API port (default: 16000)<br>- binary_url: str - URL to download agent binary<br>- max_concurrent_jobs: int - max concurrent jobs per agent (default: 10)<br>- log_level: str - logging level (default: info)<br>- tls: bool - enable TLS for agent communication (default: false)
+Configuration for SCT agent - a lightweight service for remote command execution.                 When enabled, replaces SSH-based command execution with RESTful API calls for DB nodes.<br>Configuration options:<br>- enabled: bool - enable agent (required)<br>- port: int - agent HTTP API port (default: 16000)<br>- binary_url: str - URL to download agent binary<br>- max_concurrent_jobs: int - max concurrent jobs per agent (default: 10)<br>- log_level: str - logging level (default: info)
 
-**default:** {'enabled': False, 'port': 16000, 'binary_url': '', 'max_concurrent_jobs': 10, 'log_level': 'info', 'tls': False}
+**default:** {'enabled': False, 'port': 16000, 'binary_url': '', 'max_concurrent_jobs': 10, 'log_level': 'info'}
 
 **type:** dict | str
 
@@ -1140,7 +1140,7 @@ cassandra-stress commands. You can specify everything but the -node parameter, w
 
 ## **gemini_schema_url** / SCT_GEMINI_SCHEMA_URL
 
-Path to a local schema JSON file or a remote URL (http/https) that Gemini will use.<br>Local files are uploaded to the loader via send_files and mounted into the Gemini Docker<br>container via --schema.<br>Remote URLs are downloaded on the loader node with curl and then mounted the same way.
+Url of the schema/configuration the gemini tool would use
 
 **default:** N/A
 
@@ -1228,7 +1228,7 @@ AWS image type of the db node
 
 AWS image type of the oracle node
 
-**default:** i8g.2xlarge
+**default:** N/A
 
 **type:** str
 * appendable
@@ -3145,7 +3145,7 @@ Threads amount of stress load for gradual performance test per sub-test. Example
 
 ## **perf_gradual_throttle_steps** / SCT_PERF_GRADUAL_THROTTLE_STEPS
 
-Used for gradual performance test. Define throttle for load step in ops. Example: {'read': ['100000', '150000'], 'mixed': ['300']}
+Used for gradual performance test. Define throttle for load step in ops. Supports three formats: 1) String/int list (cassandra-stress): {'read': ['100000', '150000'], 'mixed': [100, 200]} 2) Dict list (latte/multi-param): {'read': [{'threads': 10, 'concurrency': 128, 'rate': '100000'}, ...]} Dict format allows specifying threads, concurrency, and rate per step. Integers are automatically converted to strings for backward compatibility.
 
 **default:** N/A
 
@@ -3802,17 +3802,7 @@ Enables or disables truncate checks on each node upgrade and rollback
 
 ## **stress_before_upgrade** / SCT_STRESS_BEFORE_UPGRADE
 
-Stress command to be run before upgrade starts (preload/validation stage). This workload runs before any nodes are upgraded and can use CL=ALL for data validation.
-
-**default:** N/A
-
-**type:** str | list[str]
-* appendable
-
-
-## **large_partition_stress_during_upgrade** / SCT_LARGE_PARTITION_STRESS_DURING_UPGRADE
-
-Stress command to be run during rolling upgrade while nodes are being upgraded. This workload cannot use CL=ALL as not all nodes may be available during the upgrade.
+Stress command to be run before upgrade (prepare stage)
 
 **default:** N/A
 
@@ -4274,6 +4264,15 @@ Path to the email report template used for sending argus email reports
 
 **type:** str
 * appendable
+
+
+## **enable_argus_email_report** / SCT_ENABLE_ARGUS_EMAIL_REPORT
+
+Whether or not to send email using argus instead of SCT.
+
+**default:** N/A
+
+**type:** bool
 
 
 ## **c_s_driver_version** / SCT_C_S_DRIVER_VERSION

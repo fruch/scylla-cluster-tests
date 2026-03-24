@@ -58,16 +58,3 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
-
-# Virtualenv & direnv files
-.venv*
-.env*
-
-# Linux swap files range from .saa to .swp (used by vim and some other apps)
-*.s[a-w][a-p]
-
-# SSL artifacts
-data_dir/ssl_conf/
-
-# Internal private repo
-scylla-qa-internal/

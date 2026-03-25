@@ -121,8 +121,9 @@ authenticator_password: ''
 
 # gemini defaults
 n_test_oracle_db_nodes: 1
-oracle_scylla_version: '2024.1'
+oracle_scylla_version: '2025.4'
 append_scylla_args_oracle: '--enable-cache false'
+instance_type_db_oracle: 'i8g.2xlarge'
 run_gemini_in_rolling_upgrade: false
 
 # cassandra-stress defaults
@@ -346,7 +347,6 @@ download_from_s3: []
 # An empty value here, means Scylla-Manager will use its default value.
 manager_backup_restore_method: ''
 
-enable_argus_email_report: false
 argus_email_report_template: email_report_template_basic.yaml
 
 # SCT agent defaults
@@ -356,5 +356,6 @@ agent:
   binary_url: ""
   max_concurrent_jobs: 10
   log_level: "info"
+  tls: false
 
 c_s_driver_version: '3'

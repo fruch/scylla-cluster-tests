@@ -327,7 +327,7 @@ Format version of the user-data to use for scylla images,<br>default to what tag
 
 Version of scylla to use as oracle cluster with gemini tests, ex. '3.0.11'<br>Automatically lookup AMIs for formal versions.<br>WARNING: can't be used together with 'ami_id_db_oracle'
 
-**default:** 2024.1
+**default:** 2025.4
 
 **type:** str
 
@@ -468,7 +468,7 @@ When define true, will install scylla management
 
 Configuration for SCT agent - a lightweight service for remote command execution.                 When enabled, replaces SSH-based command execution with RESTful API calls for DB nodes.<br>Configuration options:<br>- enabled: bool - enable agent (required)<br>- port: int - agent HTTP API port (default: 16000)<br>- binary_url: str - URL to download agent binary<br>- max_concurrent_jobs: int - max concurrent jobs per agent (default: 10)<br>- log_level: str - logging level (default: info)
 
-**default:** {'enabled': False, 'port': 16000, 'binary_url': '', 'max_concurrent_jobs': 10, 'log_level': 'info'}
+**default:** {'enabled': False, 'port': 16000, 'binary_url': '', 'max_concurrent_jobs': 10, 'log_level': 'info', 'tls': False}
 
 **type:** dict | str
 
@@ -1228,7 +1228,7 @@ AWS image type of the db node
 
 AWS image type of the oracle node
 
-**default:** N/A
+**default:** i8g.2xlarge
 
 **type:** str
 * appendable

@@ -25,7 +25,7 @@ from google.cloud import compute_v1
 from google.cloud.compute_v1 import Firewall
 
 from sdcm.keystore import KeyStore
-from sdcm.utils.gce_utils import wait_for_extended_operation
+from sdcm.utils.gce_utils import get_gce_client_options, wait_for_extended_operation
 
 
 LOGGER = logging.getLogger(__name__)
@@ -44,11 +44,17 @@ class GceRegion:
 
         self.iam = build("iam", "v1", credentials=credentials, cache_discovery=False)
 
-        self.network_client = compute_v1.NetworksClient(credentials=credentials)
-        self.firewall_client = compute_v1.FirewallsClient(credentials=credentials)
-        self.subnets_client = compute_v1.SubnetworksClient(credentials=credentials)
-        self.routes_client = compute_v1.RoutesClient(credentials=credentials)
-        self.storage_client = storage.Client(credentials=credentials)
+        self.network_client = compute_v1.NetworksClient(
+            credentials=credentials, client_options=get_gce_client_options()
+        )
+        self.firewall_client = compute_v1.FirewallsClient(
+            credentials=credentials, client_options=get_gce_client_options()
+        )
+        self.subnets_client = compute_v1.SubnetworksClient(
+            credentials=credentials, client_options=get_gce_client_options()
+        )
+        self.routes_client = compute_v1.RoutesClient(credentials=credentials, client_options=get_gce_client_options())
+        self.storage_client = storage.Client(credentials=credentials, client_options=get_gce_client_options())
 
     @property
     def backup_storage_bucket_name(self):

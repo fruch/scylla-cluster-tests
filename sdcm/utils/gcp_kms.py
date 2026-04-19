@@ -17,6 +17,7 @@ from google.cloud import kms
 from google.cloud.exceptions import GoogleCloudError
 from google.oauth2 import service_account
 from sdcm.keystore import KeyStore
+from sdcm.utils.gce_utils import get_gce_client_options
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class GcpKms:
 
         # Create credentials from service account info
         credentials = service_account.Credentials.from_service_account_info(KeyStore().get_gcp_credentials())
-        self.client = kms.KeyManagementServiceClient(credentials=credentials)
+        self.client = kms.KeyManagementServiceClient(credentials=credentials, client_options=get_gce_client_options())
 
     def create_test_key(self):
         self.client.create_crypto_key(

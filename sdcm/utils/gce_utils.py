@@ -21,6 +21,7 @@ import uuid
 from functools import cached_property
 from typing import Any, List, Literal, TYPE_CHECKING
 
+from google.api_core.client_options import ClientOptions
 from google.oauth2 import service_account
 from google.cloud import compute_v1
 from google.cloud.compute_v1 import Image
@@ -38,6 +39,14 @@ if TYPE_CHECKING:
 GOOGLE_CLOUD_SDK_IMAGE = "google/cloud-sdk:437.0.1"
 
 LOGGER = logging.getLogger(__name__)
+
+
+def get_gce_client_options() -> ClientOptions | None:
+    """Return ClientOptions with a custom API endpoint if GOOGLE_API_ENDPOINT is set, otherwise None."""
+    endpoint = os.environ.get("GOOGLE_API_ENDPOINT")
+    if endpoint:
+        return ClientOptions(api_endpoint=endpoint)
+    return None
 
 
 def gce_instance_name(node_prefix: str, dc_idx: int, node_index: int) -> str:
@@ -111,7 +120,7 @@ def random_zone(region: str) -> str:
 def get_gce_compute_instances_client() -> tuple[compute_v1.InstancesClient, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return compute_v1.InstancesClient(credentials=credentials), info
+    return compute_v1.InstancesClient(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def get_gce_service_accounts() -> list[dict] | None:
@@ -129,37 +138,37 @@ def get_gce_service_accounts() -> list[dict] | None:
 def get_gce_compute_images_client() -> tuple[compute_v1.ImagesClient, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return compute_v1.ImagesClient(credentials=credentials), info
+    return compute_v1.ImagesClient(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def get_gce_compute_addresses_client() -> tuple[compute_v1.AddressesClient, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return compute_v1.AddressesClient(credentials=credentials), info
+    return compute_v1.AddressesClient(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def get_gce_compute_regions_client() -> tuple[compute_v1.RegionsClient, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return compute_v1.RegionsClient(credentials=credentials), info
+    return compute_v1.RegionsClient(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def get_gce_storage_client() -> tuple[storage.Client, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return storage.Client(credentials=credentials), info
+    return storage.Client(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def get_gce_compute_disks_client() -> tuple[compute_v1.DisksClient, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return compute_v1.DisksClient(credentials=credentials), info
+    return compute_v1.DisksClient(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def get_gce_compute_machine_types_client() -> tuple[compute_v1.MachineTypesClient, dict]:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    return compute_v1.MachineTypesClient(credentials=credentials), info
+    return compute_v1.MachineTypesClient(credentials=credentials, client_options=get_gce_client_options()), info
 
 
 def gce_public_addresses(instance: compute_v1.Instance) -> list[str]:
@@ -189,7 +198,7 @@ GCE_IMAGE_URL_REGEX = re.compile(
 def get_gce_image_tags(link: str) -> dict:
     info = KeyStore().get_gcp_credentials()
     credentials = service_account.Credentials.from_service_account_info(info)
-    images_client = compute_v1.ImagesClient(credentials=credentials)
+    images_client = compute_v1.ImagesClient(credentials=credentials, client_options=get_gce_client_options())
 
     image_params = GCE_IMAGE_URL_REGEX.search(link).groupdict()
 

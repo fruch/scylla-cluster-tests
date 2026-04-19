@@ -24,6 +24,7 @@ import google.api_core.exceptions
 
 from sdcm.utils.gce_region import GceRegion
 from sdcm.utils.gce_utils import SUPPORTED_PROJECTS, SUPPORTED_REGIONS
+from sdcm.utils.gce_utils import get_gce_client_options
 from sdcm.utils.context_managers import environment
 from sdcm.sct_runner import GceSctRunner
 from sdcm.keystore import KeyStore
@@ -224,7 +225,9 @@ class GceBuilder:
             "billing_project": "sct-runners",
         }
 
-        template_client = compute_v1.InstanceTemplatesClient(credentials=self.credentials)
+        template_client = compute_v1.InstanceTemplatesClient(
+            credentials=self.credentials, client_options=get_gce_client_options()
+        )
         try:
             operation = template_client.insert(project=self.region.project, instance_template_resource=template)
 

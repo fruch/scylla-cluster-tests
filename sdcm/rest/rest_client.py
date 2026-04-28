@@ -18,8 +18,8 @@ from urllib.parse import urljoin
 
 import requests
 from requests import Response
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+
+from sdcm.utils.session import create_retry_session
 
 
 LOGGER = logging.getLogger(__name__)
@@ -34,17 +34,7 @@ class RestClient:
 
     @staticmethod
     def _create_session(retries: int = 5) -> requests.Session:
-        retry_strategy = Retry(
-            total=retries,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"],
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session = requests.Session()
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
-        return session
+        return create_retry_session(retries=retries)
 
     def _build_url(self, path: str) -> str:
         return f"{self._base_url}/{path}" if path else self._base_url

@@ -10,9 +10,9 @@ Curl commands and `requests` calls without retry/timeout cause intermittent test
 
 ## Approach
 
-1. **Consolidate bash curl calls** -- create `sdcm/utils/curl.py` helper that enforces `--retry 5 --retry-max-time 300` by default, skips retry for localhost/metadata endpoints. Migrate all `remoter.run("curl ...")` calls to use it.
+1. **Shared session factory** -- create `sdcm/utils/session.py` with `create_retry_session()` that returns a `requests.Session` pre-configured with `HTTPAdapter(max_retries=Retry(...))`. All five existing `_create_session` duplicates (`rest_client.py`, `db_stats.py`, `prometheus.py`, `kafka_cluster.py`, `cloud_api_client.py`) delegate to this single implementation.
 
-2. **Add retry adapters to RestClient** -- update `sdcm/rest/rest_client.py` to use `requests.Session` with `HTTPAdapter(max_retries=Retry(...))`, following the existing pattern in `sdcm/cloud_api_client.py:76-82`. Audit and fix bare `requests.get()`/`requests.post()` calls.
+2. **Consolidate bash curl calls** -- `sdcm/utils/curl.py` helper enforces `--retry 5 --retry-max-time 300` by default, skips retry for localhost/metadata endpoints. Migrate all `remoter.run("curl ...")` calls to use it.
 
 3. **Update AI review skill** -- add HTTP resilience check to `skills/code-review/SKILL.md` that flags bare `remoter.run("curl ...")` and bare `requests.get()`/`requests.post()` in PR reviews. Update `AGENTS.md` with the new conventions.
 
@@ -20,25 +20,28 @@ Curl commands and `requests` calls without retry/timeout cause intermittent test
 
 ## Files to Modify
 
-- `sdcm/utils/curl.py` -- **new** -- retry-by-default curl helper
-- `sdcm/rest/rest_client.py` -- add `requests.Session` with retry adapter
+- `sdcm/utils/session.py` -- **new** -- shared `create_retry_session()` factory
+- `sdcm/utils/curl.py` -- **new** -- retry-by-default curl command builder
+- `sdcm/rest/rest_client.py` -- delegate `_create_session` to shared factory
 - `sdcm/rest/remote_curl_client.py` -- add curl-native `--retry` flags
+- `sdcm/db_stats.py` -- delegate `_create_session` to shared factory
+- `sdcm/prometheus.py` -- delegate `_create_session` to shared factory
+- `sdcm/kafka/kafka_cluster.py` -- delegate `_create_session` to shared factory
+- `sdcm/cloud_api_client.py` -- delegate `_create_session` to shared factory
 - `sdcm/cluster.py` -- migrate `remoter.run("curl ...")` to utility
 - `sdcm/utils/scylla_metrics_ctrl.py` -- migrate curl calls
 - `sdcm/utils/adaptive_timeouts/load_info_store.py` -- migrate curl calls
 - `sdcm/logcollector.py` -- route through session with retry
-- `sdcm/prometheus.py` -- route through session with retry
-- `sdcm/db_stats.py` -- route through session with retry
-- `sdcm/kafka/kafka_cluster.py` -- route through session with retry
 - `skills/code-review/SKILL.md` -- add HTTP resilience review check
 - `AGENTS.md` -- add curl/requests conventions to code style guidelines
 - `unit_tests/test_curl_utils.py` -- **new** -- tests for curl helper
-- `unit_tests/test_rest_client.py` -- tests for retry adapter
+- `unit_tests/unit/rest/test_rest_client.py` -- tests for retry adapter
 
 ## Verification
 
-- [ ] Unit tests pass: `uv run python -m pytest unit_tests/test_curl_utils.py unit_tests/test_rest_client.py -v`
+- [ ] Unit tests pass: `uv run python -m pytest unit_tests/test_curl_utils.py unit_tests/unit/rest/test_rest_client.py -v`
 - [ ] `grep -rn 'remoter.run.*curl' sdcm/` shows zero bare curl calls (except documented exceptions)
 - [ ] `RestClient` session has retry adapter mounted
+- [ ] All five `_create_session` methods delegate to `create_retry_session()`
 - [ ] AI review skill mentions HTTP resilience check
 - [ ] `uv run sct.py pre-commit` passes

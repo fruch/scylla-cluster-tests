@@ -18,7 +18,7 @@ SCT stores all credentials and secrets in a single shared S3 bucket (`scylla-qa-
 - **Hardcoded bucket name**: `KEYSTORE_S3_BUCKET = "scylla-qa-keystore"` is a module-level constant, making it impossible to use different keystores for different environments (staging, production, development).
 - **Shared SSH key**: All cloud backends (EC2, GCE, Azure, OCI) use the same `scylla_test_id_ed25519` key pair, returned by four identical methods.
 - **No error handling strategy**: S3 failures surface as raw `ClientError` exceptions with no retry logic, graceful degradation, or actionable error messages.
-- **No unit test coverage**: There are zero unit tests for `KeyStore` itself. The only test (`unit_tests/test_sync.py`) is an integration test that requires real AWS credentials.
+- **No unit test coverage**: There are zero unit tests for `KeyStore` itself. The only test (`unit_tests/integration/test_sync.py`) is an integration test that requires real AWS credentials.
 - **Thread safety concerns**: While `BOTO3_CLIENT_CREATION_LOCK` protects client creation, the `s3` property (resource) has no lock, and concurrent `get_file_contents` calls could race.
 - **No caching**: Every `KeyStore()` call creates a new boto3 client and fetches credentials from S3, even when the same credential was fetched seconds ago. In a single test run, `KeyStore()` is instantiated 40+ times across modules, each making separate S3 API calls.
 
@@ -55,7 +55,7 @@ Alternatives evaluated and rejected:
 
 ### Core Implementation
 
-**`sdcm/keystore.py`** (262 lines) contains:
+**`sdcm/keystore.py`** (269 lines) contains:
 
 - **`KeyStore` class** (lines 37-252): Stateless class with no `__init__`, no caching, no configuration. Each method call creates a new boto3 S3 resource/client and fetches directly from the `scylla-qa-keystore` bucket.
 - **`KEYSTORE_S3_BUCKET`** (line 30): Hardcoded module-level constant `"scylla-qa-keystore"`.
@@ -82,7 +82,16 @@ Alternatives evaluated and rejected:
 | `get_argus_rest_credentials_per_provider()` | `argus_rest_credentials[_sct_<provider>].json` | `sdcm/utils/argus.py` |
 | `get_jira_credentials()` | `scylladb_jira.json` | `sdcm/utils/issues.py` |
 | `get_housekeeping_db_credentials()` | `housekeeping-db.json` | `sdcm/utils/housekeeping.py` |
-| `get_backup_azure_blob_credentials()` | `backup_azure_blob.json` | `sdcm/test_config.py` (line 184) |
+| `get_backup_azure_blob_credentials()` | `backup_azure_blob.json` | `sdcm/test_config.py` (line 185) |
+| `get_dbaaslab_gcp_credentials()` | `gcp-scylladbaaslab.json` | DBaaS lab GCP access |
+| `get_gcp_service_accounts()` | `gcp-sct-project-1_service_accounts.json` | `sdcm/utils/gce_utils.py` |
+| `get_scylladb_upload_credentials()` | `scylladb_upload.json` | Upload utilities |
+| `get_qa_users()` | `qa_users.json` | QA user management |
+| `get_acl_grantees()` | `bucket-users.json` | S3 ACL grantees |
+| `get_qa_ssh_keys()` | (composite — returns EC2+GCE pairs) | `sdcm/sct_config.py` |
+| `get_cloud_rest_credentials(environment)` | `scylla_cloud_sct_api_creds_{env}.json` | Cloud REST API |
+| `get_scylla_doctor_full_bucket_config()` | `scylla_doctor_full.json` | Scylla Doctor |
+| `get_baremetal_config(config_name)` | `{config_name}.json` | Baremetal cluster configs |
 | `get_azure_kms_config()` | `azure_kms_config.json` | `sdcm/provision/azure/kms_provider.py` |
 | `get_gcp_kms_config()` | `gcp_kms_config.json` | `sdcm/provision/gce/kms_provider.py`, `sdcm/utils/gcp_kms.py` |
 | `sync(keys, local_path, permissions)` | multiple keys | `sdcm/sct_config.py`, SSH key distribution |
@@ -92,7 +101,7 @@ Alternatives evaluated and rejected:
 
 **`KeyStore()` is instantiated at point-of-use**, not injected or shared:
 - `sdcm/cluster.py:2044` — `KeyStore().get_ldap_ms_ad_credentials()`
-- `sdcm/test_config.py:184` — `KeyStore().set_backup_azure_blob_credentials()` via `KeyStore().get_backup_azure_blob_credentials()`
+- `sdcm/test_config.py:185` — `set_backup_azure_blob_credentials()` class method that calls `KeyStore().get_backup_azure_blob_credentials()`
 - `sdcm/utils/argus.py` — `KeyStore().get_argus_rest_credentials_per_provider()`
 - `sdcm/sct_config.py:45` — imports `KeyStore`, uses it during config validation
 - 41 files total instantiate `KeyStore()` directly
@@ -102,7 +111,7 @@ Alternatives evaluated and rejected:
 ### Testing
 
 - **`unit_tests/test_sync.py`**: Single integration test (`@pytest.mark.integration`) that tests `KeyStore.sync()` with real S3. No unit tests exist.
-- **`unit_tests/test_aws_services.py`**, **`unit_tests/provisioner/test_provisioner.py`**, **`unit_tests/provisioner/test_azure_region_definition_builder.py`**: Mock `KeyStore` methods using `patch.object` to avoid S3 calls, but don't test `KeyStore` itself.
+- **`unit_tests/integration/test_aws_services.py`**, **`unit_tests/unit/provisioner/test_provisioner.py`**, **`unit_tests/unit/provisioner/test_azure_region_definition_builder.py`**: Mock `KeyStore` methods using `patch.object` to avoid S3 calls, but don't test `KeyStore` itself.
 - **`unit_tests/lib/fake_region_definition_builder.py`**: Imports `SSHKey` to create fake SSH keys for tests.
 
 ### Existing Caching (Partial)
@@ -129,14 +138,20 @@ Current S3 bucket contents that will be migrated to AWS Secrets Manager:
 | `backup_azure_blob.json` | Azure Blob credentials | JSON | ~300B |
 | `azure_kms_config.json` | Azure KMS config | JSON | ~500B |
 | `gcp_kms_config.json` | GCP KMS config | JSON | ~500B |
-| ~6 additional JSON files | Various configs | JSON | ~300B each |
+| `scylladb_upload.json` | ScyllaDB upload credentials | JSON | ~300B |
+| `qa_users.json` | QA user credentials | JSON | ~300B |
+| `bucket-users.json` | S3 ACL grantee list | JSON | ~300B |
+| `gcp-sct-project-1_service_accounts.json` | GCP service accounts | JSON | ~1KB |
+| `gcp-scylladbaaslab.json` | DBaaS lab GCP credentials | JSON | ~2KB |
+| `scylla_doctor_full.json` | Scylla Doctor bucket config | JSON | ~300B |
+| `scylla_cloud_sct_api_creds_lab.json` | Cloud REST API credentials | JSON | ~300B |
 
 All secrets are well within the 64KB Secrets Manager limit.
 
 ## 3. Goals
 
 1. **Migrate credential retrieval from S3 to AWS Secrets Manager** — SCT reads all secrets from Secrets Manager (populated and rotated by the central Hub) with KMS encryption, per-consumer IAM policies, and CloudTrail audit logging.
-2. **Add `cached_property` caching** to eliminate redundant API calls within a test run — target: reduce API calls by 80%+ for a typical test execution. Cache persists for the `KeyStore` instance lifetime using Python's `functools.cached_property`.
+2. **Add thread-safe dict caching** to eliminate redundant API calls within a test run — target: reduce API calls by 80%+ for a typical test execution. Cache is a `dict` keyed by file name, protected by `threading.Lock`, persisting for the `KeyStore` instance lifetime.
 3. **Maintain backward compatibility** — existing `KeyStore()` API surface (all public methods) must continue to work unchanged. Callers should not need modification.
 4. **Support S3 fallback during migration** — a configuration flag allows reading from S3 (old) or Secrets Manager (new) to enable gradual rollout without a big-bang cutover.
 5. **Consolidate duplicate SSH key methods** into a single method, eliminating the four identical `get_*_ssh_key_pair()` wrappers.
@@ -187,6 +202,12 @@ The four identical methods (`get_ec2_ssh_key_pair`, `get_gce_ssh_key_pair`, `get
 - Unit tests verifying deprecation warnings are emitted
 - Unit tests verifying `get_ssh_key_pair()` returns identical results
 
+**QA Verification**:
+```bash
+uv run python -m pytest unit_tests/unit/test_keystore.py -k deprecation -W default -v
+```
+Expected: tests pass and deprecation warnings are captured.
+
 **Definition of Done**:
 - [ ] Deprecation warnings emitted when backend-specific SSH methods are called
 - [ ] `get_ssh_key_pair()` is the documented canonical method
@@ -212,13 +233,19 @@ Also add `tenacity` retry to `get_file_contents()` for transient AWS failures. F
 **Deliverables**:
 - Thread-safe cache in `get_file_contents()` using `threading.Lock` and `dict`
 - Cache lives as long as the `KeyStore` instance (no TTL)
-- `clear_cache()` method and `bypass_cache=False` parameter on `get_file_contents()`
+- `clear_cache()` public method for explicit cache invalidation (e.g., between retry cycles or in test setup). The `bypass_cache` parameter is internal-only (`_bypass_cache`) — callers use `clear_cache()` for the public API, keeping Goal 3 (callers need no modification) intact.
 - `tenacity` retry decorator on `get_file_contents()` with transient error classification
 - Unit tests for caching behavior and retry logic
 
+**QA Verification**:
+```bash
+uv run python -m pytest unit_tests/unit/test_keystore.py -k "cache or retry" -v
+```
+Expected: cache hit tests show mock called once, retry tests show 3 attempts on transient error.
+
 **Definition of Done**:
 - [ ] Repeated calls to same credential return cached value (verified by mock call count)
-- [ ] `bypass_cache=True` forces API fetch
+- [ ] `_bypass_cache=True` forces API fetch
 - [ ] `clear_cache()` empties all cached entries
 - [ ] Thread-safe under concurrent access (tested with `ThreadPoolExecutor`)
 - [ ] Transient errors are retried up to 3 times with exponential backoff
@@ -285,6 +312,9 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 - `get_file_contents()` dispatches to the configured backend
 - Secrets Manager secret names use a configurable prefix (default: `sct/`) to namespace secrets and avoid collisions, e.g. `sct/scylla_test_id_ed25519`
 - `SCT_KEYSTORE_SM_PREFIX` environment variable for the prefix (default: `sct/`)
+
+**Configuration integration**: `SCT_KEYSTORE_BACKEND` is intentionally an environment variable (not an `sct_config.py` parameter) because it must be resolved before `sct_config.py` loads — the config system itself uses `KeyStore` during validation (`sdcm/sct_config.py:45`). Bootstrapping would be circular if the backend selection depended on config parsing. However, the variable is documented in `AGENTS.md` and validated at `KeyStore` init time (must be `"s3"` or `"secretsmanager"`, else `ValueError`).
+
 - `sync()` updated to work with both backends — fetches from Secrets Manager when configured, writes to disk as before
 - Cutover runbook in the PR description covering:
   1. Pre-cutover: run validation script (Phase 4) to confirm all `sct/*` secrets are populated
@@ -298,7 +328,7 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 - [ ] `SCT_KEYSTORE_BACKEND=s3` (or unset) reads from S3 (existing behavior)
 - [ ] Binary and JSON secrets round-trip correctly through Secrets Manager
 - [ ] `sync()` writes SSH keys to disk correctly from both backends
-- [ ] Caching and retry logic work identically for both backends
+- [ ] Caching and retry logic work for both backends (note: `sync()` loses ETag-based deduplication on Secrets Manager backend — always writes file; see Risk Table)
 - [ ] Unit tests cover both backends using `moto`'s `@mock_aws` for Secrets Manager
 - [ ] Cutover runbook includes rollback procedure
 - [ ] Passes `uv run sct.py pre-commit`
@@ -316,6 +346,12 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 **Deliverables**:
 - `LOGGER` with structured log messages at appropriate levels
 - Unit tests verifying log output at correct levels
+
+**QA Verification**:
+```bash
+uv run python -m pytest unit_tests/unit/test_keystore.py -k logging --log-cli-level=DEBUG -v
+```
+Expected: DEBUG logs for cache hits, INFO for fetches, WARNING for slow (>2s) fetches.
 
 **Definition of Done**:
 - [ ] `DEBUG` log for cache hits, `INFO` for API fetches, `WARNING` for slow fetches
@@ -336,6 +372,13 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 - `get_keystore() -> KeyStore` module-level function (lazy singleton)
 - Thread-safe initialization using `threading.Lock`
 - Unit tests for singleton behavior
+- `_reset_keystore()` test helper (or document `monkeypatch` pattern) to ensure test isolation — shared singleton must not leak state between test cases
+
+**QA Verification**:
+```bash
+uv run python -m pytest unit_tests/unit/test_keystore.py -k singleton -v
+```
+Expected: `get_keystore()` returns same instance across calls; isolated tests get fresh instances.
 
 **Definition of Done**:
 - [ ] `get_keystore()` returns the same instance across calls
@@ -359,6 +402,12 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 - Update the keystore section in repository documentation
 - Create initial Confluence page for secret knowledge base (see Section 9)
 - Archive this plan to `docs/plans/archive/`
+
+**QA Verification**:
+```bash
+uv run python -m pytest unit_tests/unit/test_keystore.py -v && uv run sct.py pre-commit
+```
+Expected: all tests pass, pre-commit clean, docstrings present on all public methods.
 
 **Definition of Done**:
 - [ ] All public methods have Google-format docstrings
@@ -388,7 +437,7 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 | Deprecation warnings | `get_ec2_ssh_key_pair` etc. (Phase 2) | Emits `DeprecationWarning` |
 | Cache hit | `get_file_contents` (Phase 3) | Second call returns cached, no API call |
 | Cache persists | `get_file_contents` (Phase 3) | Cache lives for instance lifetime |
-| Cache bypass | `get_file_contents(bypass_cache=True)` (Phase 3) | Forces API fetch |
+| Cache bypass | `get_file_contents(_bypass_cache=True)` (Phase 3) | Forces API fetch |
 | Retry transient (S3) | `get_file_contents` (Phase 3) | Retries on `SlowDown`, succeeds |
 | Retry transient (SM) | `get_file_contents` (Phase 5) | Retries on `ThrottlingException`, succeeds |
 | No retry permanent | `get_file_contents` (Phase 3) | No retry on `NoSuchKey`/`ResourceNotFoundException` |
@@ -401,7 +450,7 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 
 ### Integration Tests (Existing)
 
-- `unit_tests/test_sync.py` — already tests `sync()` with real S3. Remains valid for S3 backend. A new integration test for Secrets Manager backend is optional (CloudTrail validation is sufficient).
+- `unit_tests/integration/test_sync.py` — already tests `sync()` with real S3. Remains valid for S3 backend. A new integration test for Secrets Manager backend is optional (CloudTrail validation is sufficient).
 
 ### Manual Testing
 
@@ -428,7 +477,7 @@ The `sync()` and `get_obj_if_needed()` methods (used for SSH key distribution to
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | Secrets Manager API throttling under high concurrency | Medium | Medium | In-memory caching (Phase 3) reduces API calls by 80%+. Default Secrets Manager quota is 10,000 requests/second — far above SCT's needs. Retry logic (Phase 3) handles transient throttling. |
-| Cache serves stale credentials after secret refresh | Low | Low | Credentials do not change during a test run. Cache lives for the `KeyStore` instance lifetime. For the rare case of mid-run refresh: `bypass_cache=True` and `clear_cache()` are available. Between runs, a new `KeyStore` instance starts with a fresh cache. |
+| Cache serves stale credentials after secret refresh | Low | Low | Credentials do not change during a test run. Cache lives for the `KeyStore` instance lifetime. For the rare case of mid-run refresh: `_bypass_cache=True` and `clear_cache()` are available. Between runs, a new `KeyStore` instance starts with a fresh cache. |
 | Hub fails to populate all SCT secrets | Low | High | Validation script (Phase 4) checks all expected secrets from a manifest before cutover. CI can run this periodically to detect missing secrets early. |
 | Cost increase from Secrets Manager API calls | Low | Low | $0.05 per 10,000 API calls. With caching, a test run makes ~5 calls. Even 1,000 test runs/month = $0.025. Secret storage: 20 x $0.40 = $8/month. |
 | Shared instance causes issues with parallel test execution | Medium | Medium | `get_keystore()` is optional; direct `KeyStore()` instantiation still works. Cache is per-instance. |

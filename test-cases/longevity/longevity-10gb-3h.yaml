@@ -6,7 +6,7 @@ test_metadata:
     cluster stability under moderate write load with continuous chaos operations.
   test_type: longevity
   tier: tier1
-  duration_class: short
+  duration_class: medium
   supported_backends:
     - aws
     - gce

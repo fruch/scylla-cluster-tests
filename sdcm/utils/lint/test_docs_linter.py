@@ -156,7 +156,7 @@ def cross_reference_config(config_path: Path) -> LintResult:
                     f"test_duration={minutes}min (expected '{expected}')"
                 )
         except (ValueError, TypeError):
-            pass
+            result.warnings.append("TD-008: test_duration is not a valid integer, cannot verify duration_class")
 
     # TD-009: features consistent with config
     n_db_nodes = config.get("n_db_nodes", "")

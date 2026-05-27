@@ -1626,10 +1626,9 @@ def lint_pipelines(pipeline_dir, pipeline_file, workers, include_filter, exclude
 
 @cli.command("lint-test-docs", help="Validate test_metadata sections in test-case YAML files")
 @click.option("--test-case-dir", default="test-cases", help="Root directory of test cases")
-@click.option("--fix", is_flag=True, help="Auto-fix trivially correctable issues (duration_class, stress_tools)")
 @click.option("--missing-only", is_flag=True, help="Only report test cases missing test_metadata")
 @click.option("--test-case-file", default=None, type=click.Path(exists=True), help="Validate a single file")
-def lint_test_docs(test_case_dir, fix, missing_only, test_case_file):
+def lint_test_docs(test_case_dir, missing_only, test_case_file):
     taxonomy_path = Path("docs/pipeline-labels/taxonomy.yaml")
 
     if test_case_file:

@@ -19,6 +19,7 @@ VALID_BACKENDS = {
     "k8s-local-kind",
     "baremetal",
     "xcloud",
+    "oci",
 }
 
 

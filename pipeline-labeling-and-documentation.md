@@ -653,7 +653,7 @@ Write a 2-4 sentence description that answers:
 ## Phase 4: Assemble and Validate
 
 1. Add `test_metadata:` section at the top of the test-case YAML
-2. Run `sct.py lint-test-docs --file <path>` to validate
+2. Run `sct.py lint-test-docs --test-case-file <path>` to validate
 3. Fix any errors or warnings
 ```
 

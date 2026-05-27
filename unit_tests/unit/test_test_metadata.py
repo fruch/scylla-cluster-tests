@@ -1,6 +1,6 @@
 import pytest
 
-from sdcm.test_metadata import TestMetadata, VALID_BACKENDS
+from sdcm.test_metadata import TestMetadata, _get_valid_backends
 
 
 def test_valid_minimal():
@@ -61,8 +61,8 @@ def test_supported_backends_none_means_all():
 
 
 def test_all_valid_backends_accepted():
-    m = TestMetadata(supported_backends=list(VALID_BACKENDS))
-    assert set(m.supported_backends) == VALID_BACKENDS
+    m = TestMetadata(supported_backends=list(_get_valid_backends()))
+    assert set(m.supported_backends) == _get_valid_backends()
 
 
 def test_empty_supported_backends_list():

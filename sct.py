@@ -87,7 +87,7 @@ from sdcm.utils.cloud_monitor import cloud_report, cloud_qa_report
 from sdcm.utils.cloud_monitor.cloud_monitor import cloud_non_qa_report
 from sdcm.utils.lint.env_builder import build_env
 from sdcm.utils.lint.jenkins_parser import parse_jenkinsfile, discover_pipeline_files
-from sdcm.utils.lint.test_docs_linter import lint_test_metadata
+from sdcm.utils.lint.docs_linter import lint_test_metadata
 from sdcm.utils.oci_utils import get_scylla_images_by_branch, get_scylla_images_by_version, list_instances_oci
 from sdcm.utils.common import (
     S3Storage,
@@ -2720,6 +2720,7 @@ def create_argus_test_run():
             origin_url=git_status.get("upstream.url"),
             branch_name=git_status.get("branch.upstream"),
             sct_config=None,
+            test_metadata=params.get("test_metadata"),
         )
         LOGGER.info("Initialized Argus TestRun with test id %s", get_test_config().argus_client().run_id)
     except ArgusClientError:

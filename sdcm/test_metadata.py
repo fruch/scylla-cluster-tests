@@ -9,18 +9,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-VALID_BACKENDS = {
-    "aws",
-    "gce",
-    "azure",
-    "docker",
-    "k8s-eks",
-    "k8s-gke",
-    "k8s-local-kind",
-    "baremetal",
-    "xcloud",
-    "oci",
-}
+
+def _get_valid_backends() -> set[str]:
+    """Import available_backends from sct_config lazily to avoid circular import."""
+    from sdcm.sct_config import available_backends  # noqa: PLC0415 - circular import avoidance
+
+    return set(available_backends)
 
 
 class TestMetadata(BaseModel):
@@ -115,7 +109,8 @@ class TestMetadata(BaseModel):
     def validate_backends(cls, v):
         if v is None:
             return v
+        valid_backends = _get_valid_backends()
         for b in v:
-            if b not in VALID_BACKENDS:
-                raise ValueError(f"Invalid backend '{b}'. Valid: {sorted(VALID_BACKENDS)}")
+            if b not in valid_backends:
+                raise ValueError(f"Invalid backend '{b}'. Valid: {sorted(valid_backends)}")
         return v

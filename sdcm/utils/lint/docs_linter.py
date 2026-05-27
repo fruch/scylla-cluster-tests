@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from sdcm.test_metadata import TestMetadata, VALID_BACKENDS
+from sdcm.test_metadata import TestMetadata, _get_valid_backends
 
 
 @dataclass
@@ -141,7 +141,7 @@ def cross_reference_config(config_path: Path) -> LintResult:
     # TD-007: supported_backends compatible with pipeline backend
     pipeline_backend = config.get("cluster_backend")
     if pipeline_backend and meta.supported_backends is not None:
-        if pipeline_backend not in meta.supported_backends and pipeline_backend in VALID_BACKENDS:
+        if pipeline_backend not in meta.supported_backends and pipeline_backend in _get_valid_backends():
             result.warnings.append(f"TD-007: cluster_backend '{pipeline_backend}' not in supported_backends")
 
     # TD-008: duration_class consistent with test_duration

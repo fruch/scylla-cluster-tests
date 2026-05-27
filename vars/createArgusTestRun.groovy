@@ -40,4 +40,29 @@ def call(Map params) {
         </div>
     """
     currentBuild.description += "${runButton}"
+
+    // Read test_metadata from config YAML and add to build description for Argus indexing
+    try {
+        def configFiles = params.test_config instanceof List ? params.test_config : [params.test_config]
+        for (configFile in configFiles) {
+            if (fileExists(configFile)) {
+                def yamlContent = readYaml file: configFile
+                if (yamlContent?.test_metadata) {
+                    def meta = yamlContent.test_metadata
+                    String metaHtml = """
+                        <div style="margin: 4px; font-size: 0.85em; color: #555;">
+                            <b>Metadata:</b> tier=${meta.tier ?: 'n/a'} |
+                            type=${meta.test_type ?: 'n/a'} |
+                            duration=${meta.duration_class ?: 'n/a'} |
+                            backends=${meta.supported_backends ?: 'n/a'}
+                        </div>
+                    """
+                    currentBuild.description += metaHtml
+                    break
+                }
+            }
+        }
+    } catch (Exception e) {
+        echo "Warning: Could not read test_metadata for build description: ${e.message}"
+    }
 }

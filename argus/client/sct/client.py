@@ -43,7 +43,8 @@ class ArgusSCTClient(ArgusClient):
         self.run_id = run_id
 
     def submit_sct_run(self, job_name: str, job_url: str, started_by: str, commit_id: str,
-                       origin_url: str, branch_name: str, sct_config: dict) -> None:
+                       origin_url: str, branch_name: str, sct_config: dict,
+                       test_metadata: dict | None = None) -> None:
         """
             Submits an SCT run to argus.
         """
@@ -56,6 +57,7 @@ class ArgusSCTClient(ArgusClient):
             "origin_url": origin_url,
             "branch_name": branch_name,
             "sct_config": sct_config,
+            "test_metadata": test_metadata,
         })
 
         self.check_response(response)

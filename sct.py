@@ -19,6 +19,7 @@ ensure_start_method()
 
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta, UTC
+import difflib
 import json
 import os
 import re
@@ -55,7 +56,9 @@ from sdcm.localhost import LocalHost
 from sdcm.provision import AzureProvisioner
 from sdcm.provision.provisioner import VmInstance, VmArch
 from sdcm.remote import LOCALRUNNER
+from sdcm.nemesis import NemesisBaseClass, NemesisFlags
 from sdcm.nemesis.monkey.runners import SisyphusMonkey
+from sdcm.nemesis.registry import NemesisRegistry
 from sdcm.sct_config import AWS_SUPPORTED_REGIONS, SCTConfiguration, init_and_verify_sct_config, available_backends
 from sdcm.sct_provision.common.layout import SCTProvisionLayout
 from sdcm.sct_provision.instances_provider import provision_sct_resources
@@ -84,6 +87,7 @@ from sdcm.utils.cloud_monitor import cloud_report, cloud_qa_report
 from sdcm.utils.cloud_monitor.cloud_monitor import cloud_non_qa_report
 from sdcm.utils.lint.env_builder import build_env
 from sdcm.utils.lint.jenkins_parser import parse_jenkinsfile, discover_pipeline_files
+from sdcm.utils.lint.test_docs_linter import lint_test_metadata
 from sdcm.utils.oci_utils import get_scylla_images_by_branch, get_scylla_images_by_version, list_instances_oci
 from sdcm.utils.common import (
     S3Storage,
@@ -1620,6 +1624,65 @@ def lint_pipelines(pipeline_dir, pipeline_file, workers, include_filter, exclude
     sys.exit(1 if failed_count else 0)
 
 
+@cli.command("lint-test-docs", help="Validate test_metadata sections in test-case YAML files")
+@click.option("--test-case-dir", default="test-cases", help="Root directory of test cases")
+@click.option("--fix", is_flag=True, help="Auto-fix trivially correctable issues (duration_class, stress_tools)")
+@click.option("--missing-only", is_flag=True, help="Only report test cases missing test_metadata")
+@click.option("--test-case-file", default=None, type=click.Path(exists=True), help="Validate a single file")
+def lint_test_docs(test_case_dir, fix, missing_only, test_case_file):
+    taxonomy_path = Path("docs/pipeline-labels/taxonomy.yaml")
+
+    if test_case_file:
+        files = [Path(test_case_file)]
+    else:
+        files = sorted(Path(test_case_dir).rglob("*.yaml"))
+
+    if not files:
+        click.echo("No test-case YAML files found.")
+        sys.exit(0)
+
+    failed_count = 0
+    passed_count = 0
+    missing_count = 0
+
+    for path in files:
+        result = lint_test_metadata(path, taxonomy_path if taxonomy_path.exists() else None)
+
+        if missing_only:
+            if result.errors and any("TD-001" in e for e in result.errors):
+                missing_count += 1
+                click.secho(str(path), fg="yellow")
+            continue
+
+        if not result.passed:
+            failed_count += 1
+            click.secho(f"FAIL: {path}", fg="red", bold=True)
+            for err in result.errors:
+                click.secho(f"  ERROR: {err}", fg="red")
+            for warn in result.warnings:
+                click.secho(f"  WARN:  {warn}", fg="yellow")
+            click.echo()
+        else:
+            passed_count += 1
+            if result.warnings:
+                click.secho(f"WARN: {path}", fg="yellow")
+                for warn in result.warnings:
+                    click.secho(f"  WARN:  {warn}", fg="yellow")
+                click.echo()
+
+    if missing_only:
+        click.echo(f"{missing_count} test cases missing test_metadata (out of {len(files)} total)")
+        sys.exit(0)
+
+    total = passed_count + failed_count
+    click.echo("---")
+    summary = f"{passed_count}/{total} test cases passed"
+    if failed_count:
+        summary += f" ({failed_count} failed)"
+    click.secho(summary, fg="green" if failed_count == 0 else "red")
+    sys.exit(1 if failed_count else 0)
+
+
 @cli.command(help="Check test configuration file")
 @click.argument("config_file", type=str, default="")
 @click.option("-b", "--backend", type=click.Choice(available_backends), default="aws")
@@ -2234,6 +2297,53 @@ def create_nemesis_yaml(diff):
     generate_nemesis_yaml(file_opener)
     if error_carrier:
         sys.exit(1)
+
+
+@cli.command("update-taxonomy-nemesis")
+@click.option("--diff/--no-diff", default=True)
+def update_taxonomy_nemesis(diff):
+    """Update nemesis values in docs/pipeline-labels/taxonomy.yaml from NemesisRegistry."""
+    taxonomy_path = Path("docs/pipeline-labels/taxonomy.yaml")
+    if not taxonomy_path.exists():
+        click.secho(f"taxonomy.yaml not found at {taxonomy_path}", fg="red")
+        sys.exit(1)
+
+    registry = NemesisRegistry(base_class=NemesisBaseClass, flag_class=NemesisFlags)
+    nemesis_names = sorted(cls.__name__ for cls in registry.get_subclasses())
+
+    with open(taxonomy_path) as f:
+        content = f.read()
+
+    marker = "  # ... auto-populated by pre-commit hook from NemesisRegistry"
+    nemesis_block_pattern = re.compile(
+        r"(nemesis_labels:.*?values:\n)(.*?)(\n  # \.\.\. auto-populated.*?\n)",
+        re.DOTALL,
+    )
+
+    new_values = "".join(f"    - {name}\n" for name in nemesis_names)
+    new_content = nemesis_block_pattern.sub(
+        lambda m: m.group(1) + new_values + marker + "\n",
+        content,
+    )
+
+    if new_content == content:
+        sys.exit(0)
+
+    if diff:
+        diff_lines = list(
+            difflib.unified_diff(
+                content.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=str(taxonomy_path),
+                tofile=str(taxonomy_path),
+            )
+        )
+        if diff_lines:
+            click.echo("".join(diff_lines))
+            sys.exit(1)
+    else:
+        taxonomy_path.write_text(new_content)
+        click.echo(f"Updated {len(nemesis_names)} nemesis entries in {taxonomy_path}")
 
 
 @cli.command("create-nemesis-pipelines")

@@ -49,12 +49,13 @@ def call(Map params) {
                 def yamlContent = readYaml file: configFile
                 if (yamlContent?.test_metadata) {
                     def meta = yamlContent.test_metadata
+                    def esc = { v -> v?.toString()?.replaceAll('&', '&amp;')?.replaceAll('<', '&lt;')?.replaceAll('>', '&gt;')?.replaceAll('"', '&quot;') ?: 'n/a' }
                     String metaHtml = """
                         <div style="margin: 4px; font-size: 0.85em; color: #555;">
-                            <b>Metadata:</b> tier=${meta.tier ?: 'n/a'} |
-                            type=${meta.test_type ?: 'n/a'} |
-                            duration=${meta.duration_class ?: 'n/a'} |
-                            backends=${meta.supported_backends ?: 'n/a'}
+                            <b>Metadata:</b> tier=${esc(meta.tier)} |
+                            type=${esc(meta.test_type)} |
+                            duration=${esc(meta.duration_class)} |
+                            backends=${esc(meta.supported_backends)}
                         </div>
                     """
                     currentBuild.description += metaHtml

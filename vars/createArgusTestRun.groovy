@@ -3,27 +3,6 @@
 def call(Map params) {
     def test_config = groovy.json.JsonOutput.toJson(params.test_config)
 
-    try {
-        def configFiles = params.test_config instanceof List ? params.test_config : [params.test_config]
-        for (configFile in configFiles) {
-            if (fileExists(configFile)) {
-                def yamlContent = readYaml file: configFile
-                if (yamlContent?.test_metadata) {
-                    def meta = yamlContent.test_metadata
-                    if (meta.tier) addBadge(text: "TIER:${meta.tier.toUpperCase()}", id: 'test-metadata')
-                    if (meta.test_type) addBadge(text: "TYPE:${meta.test_type.toUpperCase()}", id: 'test-metadata')
-                    if (meta.duration_class) addBadge(text: "DURATION:${meta.duration_class.toUpperCase()}", id: 'test-metadata')
-                    if (meta.supported_backends) {
-                        meta.supported_backends.each { b -> addBadge(text: "BACKEND:${b.toUpperCase()}", id: 'test-metadata') }
-                    }
-                    break
-                }
-            }
-        }
-    } catch (Throwable e) {
-        echo "Warning: Could not set build metadata badges: ${e.message}"
-    }
-
     retry(3) {
 		sh """#!/bin/bash
 			set -xe

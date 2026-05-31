@@ -125,6 +125,7 @@ class JenkinsPipelines:
             sct_branch_name=self.sct_branch_name,
             sct_jenkinsfile=sct_jenkinsfile,
         )
+        xml_data = self._inject_test_metadata_xml(xml_data, jenkins_file)
         if group_name and self.base_job_dir:
             group_name = "/" + str(group_name)
         _job_name = f"{self.base_job_dir}{group_name}/{base_name}{job_name_suffix}"
@@ -257,6 +258,35 @@ class JenkinsPipelines:
         except (OSError, KeyError, ValueError, TypeError):
             LOGGER.debug("Could not read test_metadata from %s", yaml_path, exc_info=True)
             return ""
+
+    def _inject_test_metadata_xml(self, xml_data: str, jenkins_file: Path) -> str:
+        config_path = self._extract_test_config_path(jenkins_file)
+        if not config_path:
+            return xml_data
+        yaml_path = get_sct_root_path() / config_path
+        if not yaml_path.exists():
+            return xml_data
+        try:
+            with yaml_path.open() as fh:
+                config = yaml.safe_load(fh)
+            if not config or "test_metadata" not in config:
+                return xml_data
+            meta = config["test_metadata"]
+            root = ET.fromstring(xml_data)
+            for existing in root.findall("testMetadata"):
+                root.remove(existing)
+            elem = ET.SubElement(root, "testMetadata")
+            for key in ("tier", "test_type", "duration_class"):
+                if key in meta:
+                    ET.SubElement(elem, key).text = str(meta[key])
+            if "supported_backends" in meta:
+                backends_elem = ET.SubElement(elem, "supported_backends")
+                for backend in meta["supported_backends"]:
+                    ET.SubElement(backends_elem, "backend").text = str(backend)
+            return ET.tostring(root, encoding="unicode", xml_declaration=True)
+        except (OSError, KeyError, ValueError, TypeError):
+            LOGGER.debug("Could not inject testMetadata XML from %s", yaml_path, exc_info=True)
+            return xml_data
 
     def create_job_tree(
         self,

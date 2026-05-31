@@ -25,6 +25,7 @@ tier:
   values:
     sanity: "Basic smoke tests, run on every commit. Duration typically <1h."
     tier1: "Core regression suite, run weekly. Duration typically 3-24h."
+    tier2: "Extended regression suite, run less frequently. Duration typically 12-48h."
     release: "Mandatory during release qualification/gate. Any duration."
     ondemand: "Run on-demand for investigation or niche scenarios."
 
@@ -39,13 +40,18 @@ supported_backends:
   description: "Backends the test supports. Omit (null) to indicate all backends."
   values:
     - aws
+    - aws-siren
     - gce
+    - gce-siren
     - azure
     - docker
     - k8s-eks
     - k8s-gke
     - k8s-local-kind
+    - k8s-local-kind-aws
+    - k8s-local-kind-gce
     - baremetal
+    - oci
     - xcloud
 
 stress_tools:

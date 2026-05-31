@@ -89,3 +89,13 @@ class TestMetadata(BaseModel):
             if b not in valid_backends:
                 raise ValueError(f"Invalid backend '{b}'. Valid: {sorted(valid_backends)}")
         return v
+
+    @field_validator("stress_tools", mode="before")
+    @classmethod
+    def validate_stress_tools(cls, v):
+        if not v:
+            return v
+        for tool in v:
+            if tool not in _STRESS_TOOLS:
+                raise ValueError(f"Invalid stress_tool '{tool}'. Valid: {sorted(_STRESS_TOOLS)}")
+        return v

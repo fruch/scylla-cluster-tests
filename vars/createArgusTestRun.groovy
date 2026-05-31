@@ -2,6 +2,34 @@
 
 def call(Map params) {
     def test_config = groovy.json.JsonOutput.toJson(params.test_config)
+
+    // Set job tags from test_metadata (independent of Argus)
+    try {
+        def configFiles = params.test_config instanceof List ? params.test_config : [params.test_config]
+        for (configFile in configFiles) {
+            if (fileExists(configFile)) {
+                def yamlContent = readYaml file: configFile
+                if (yamlContent?.test_metadata) {
+                    def meta = yamlContent.test_metadata
+                    def tags = []
+                    if (meta.tier) tags.add("TIER:${meta.tier.toUpperCase()}")
+                    if (meta.test_type) tags.add("TYPE:${meta.test_type.toUpperCase()}")
+                    if (meta.duration_class) tags.add("DURATION:${meta.duration_class.toUpperCase()}")
+                    if (meta.supported_backends) {
+                        meta.supported_backends.each { b -> tags.add("BACKEND:${b.toUpperCase()}") }
+                    }
+                    if (tags) {
+                        addJobTags(tags)
+                    }
+                    break
+                }
+            }
+        }
+    } catch (Exception e) {
+        echo "Warning: Could not set job tags from test_metadata: ${e.message}"
+    }
+
+    // Create Argus test run
     retry(3) {
 		sh """#!/bin/bash
 			set -xe
@@ -40,29 +68,4 @@ def call(Map params) {
         </div>
     """
     currentBuild.description += "${runButton}"
-
-    try {
-        def configFiles = params.test_config instanceof List ? params.test_config : [params.test_config]
-        for (configFile in configFiles) {
-            if (fileExists(configFile)) {
-                def yamlContent = readYaml file: configFile
-                if (yamlContent?.test_metadata) {
-                    def meta = yamlContent.test_metadata
-                    def tags = []
-                    if (meta.tier) tags.add("TIER:${meta.tier.toUpperCase()}")
-                    if (meta.test_type) tags.add("TYPE:${meta.test_type.toUpperCase()}")
-                    if (meta.duration_class) tags.add("DURATION:${meta.duration_class.toUpperCase()}")
-                    if (meta.supported_backends) {
-                        meta.supported_backends.each { b -> tags.add("BACKEND:${b.toUpperCase()}") }
-                    }
-                    if (tags) {
-                        addJobTags(tags)
-                    }
-                    break
-                }
-            }
-        }
-    } catch (Exception e) {
-        echo "Warning: Could not set job tags from test_metadata: ${e.message}"
-    }
 }

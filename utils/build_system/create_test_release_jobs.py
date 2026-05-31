@@ -112,7 +112,11 @@ class JenkinsPipelines:
         if defines:
             description = f"{text_description}\n\n### JobDefinitions\n{yaml.safe_dump(defines)}"
         else:
-            description = sct_jenkinsfile
+            description = str(sct_jenkinsfile)
+
+        metadata_block = self._get_metadata_description(jenkins_file)
+        if metadata_block:
+            description = f"{description}\n\n{metadata_block}"
 
         xml_data = JOB_TEMPLATE % dict(
             sct_display_name=f"{base_name}{job_name_suffix}",
@@ -204,6 +208,55 @@ class JenkinsPipelines:
         description = "\n".join(line.strip() for line in description_lines)
 
         return description
+
+    @staticmethod
+    def _extract_test_config_path(jenkins_file: Path) -> str | None:
+        """Extract the first test_config YAML path from a Jenkinsfile."""
+        content = jenkins_file.read_text(encoding="utf-8")
+        match = re.search(r"test_config:\s*['\"]([^'\"]+\.yaml)", content)
+        if match:
+            return match.group(1)
+        list_match = re.search(r'test_config:\s*"""?\[([^\]]+)\]', content)
+        if list_match:
+            first = list_match.group(1).split(",")[0].strip().strip("'\"")
+            if first.endswith(".yaml"):
+                return first
+        return None
+
+    @classmethod
+    def _get_metadata_description(cls, jenkins_file: Path) -> str:
+        """Read test_metadata from the test-case YAML and format for job description."""
+        config_path = cls._extract_test_config_path(jenkins_file)
+        if not config_path:
+            return ""
+        sct_root = get_sct_root_path()
+        yaml_path = sct_root / config_path
+        if not yaml_path.exists():
+            return ""
+        try:
+            with yaml_path.open() as fh:
+                config = yaml.safe_load(fh)
+            if not config or "test_metadata" not in config:
+                return ""
+            meta = config["test_metadata"]
+            description = meta.get("description", "")
+            tier = meta.get("tier", "n/a")
+            test_type = meta.get("test_type", "n/a")
+            duration_class = meta.get("duration_class", "n/a")
+            backends = meta.get("supported_backends", [])
+            lines = []
+            if description:
+                lines.append(description.strip())
+                lines.append("")
+            lines.append("### TestMetadata")
+            lines.append(f"tier: {tier}")
+            lines.append(f"test_type: {test_type}")
+            lines.append(f"duration_class: {duration_class}")
+            lines.append(f"supported_backends: {backends}")
+            return "\n".join(lines)
+        except (OSError, KeyError, ValueError, TypeError):
+            LOGGER.debug("Could not read test_metadata from %s", yaml_path, exc_info=True)
+            return ""
 
     def create_job_tree(
         self,

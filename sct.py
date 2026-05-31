@@ -1682,6 +1682,51 @@ def lint_test_docs(test_case_dir, missing_only, test_case_file):
     sys.exit(1 if failed_count else 0)
 
 
+@cli.command(
+    "preview-job-description", help="Preview the Jenkins job description that would be generated for a pipeline file"
+)
+@click.argument("jenkinsfile", type=click.Path(exists=True))
+def preview_job_description(jenkinsfile):
+    jenkins_file = Path(jenkinsfile)
+    text_description = JenkinsPipelines.get_job_description(jenkins_file)
+
+    content = jenkins_file.read_text()
+    pipeline_params = {}
+    for key in ("backend", "test_name", "test_config", "region"):
+        match = re.search(rf"{key}:\s*['\"]([^'\"]+)['\"]", content)
+        if match:
+            pipeline_params[key] = match.group(1)
+
+    if text_description:
+        description = text_description
+    elif pipeline_params:
+        parts = []
+        if "test_name" in pipeline_params:
+            parts.append(f"test: {pipeline_params['test_name']}")
+        if "backend" in pipeline_params:
+            parts.append(f"backend: {pipeline_params['backend']}")
+        if "region" in pipeline_params:
+            parts.append(f"region: {pipeline_params['region']}")
+        if "test_config" in pipeline_params:
+            parts.append(f"config: {pipeline_params['test_config']}")
+        description = " | ".join(parts)
+    else:
+        sct_jenkinsfile = (
+            jenkins_file.relative_to(Path(__file__).resolve().parent) if jenkins_file.is_absolute() else jenkins_file
+        )
+        description = str(sct_jenkinsfile)
+
+    metadata_block = JenkinsPipelines._get_metadata_description(jenkins_file)
+    if metadata_block:
+        description = f"{description}\n\n{metadata_block}"
+
+    if not description.strip():
+        click.secho("No description content found.", fg="yellow")
+        sys.exit(1)
+
+    click.echo(description)
+
+
 @cli.command(help="Check test configuration file")
 @click.argument("config_file", type=str, default="")
 @click.option("-b", "--backend", type=click.Choice(available_backends), default="aws")
@@ -2720,7 +2765,6 @@ def create_argus_test_run():
             origin_url=git_status.get("upstream.url"),
             branch_name=git_status.get("branch.upstream"),
             sct_config=None,
-            test_metadata=params.get("test_metadata"),
         )
         LOGGER.info("Initialized Argus TestRun with test id %s", get_test_config().argus_client().run_id)
     except ArgusClientError:

@@ -265,6 +265,20 @@ Until `TerminateInstances` is implemented, the fallback is: SCT catches the erro
 **Objective**: Add a Jenkins job that runs the AMI artifact test against minicloud on a standard AWS SCT runner (bare-metal `.metal` instance with KVM support), installing KVM and minicloud as part of the pipeline.
 
 **Implementation**:
+- **Runner provisioning strategy — OPEN DECISION**:
+
+  Three options under consideration. The choice depends on how frequently minicloud is updated and how closely we want to match production SCT runner patterns.
+
+  | Option | Description | Pros | Cons |
+  |--------|-------------|------|------|
+  | **A: Install in-pipeline** | Standard SCT runner; KVM + minicloud installed during pipeline setup stage | Self-contained, reproducible, no extra infra to maintain | 2-3 min overhead per run; doesn't match production runner pattern |
+  | **B: Pre-baked AMI** | Dedicated runner AMI with KVM, QEMU, minicloud pre-installed (like existing SCT runners) | Fast startup; matches existing infra pattern; AMI cache can be baked in or on persistent EBS | Another AMI to maintain/rebuild on minicloud version bumps |
+  | **C: Hybrid** | Base runner AMI has KVM/QEMU (stable, rarely changes); minicloud installed in-pipeline (changes frequently during dev) | Balances stability with iteration speed; KVM setup is one-time, minicloud version easy to bump | Slightly more complex than pure A or B |
+
+  **Recommendation**: Start with **A** (in-pipeline install) during initial development for fastest iteration. Move to **C** once minicloud stabilizes and the overhead becomes annoying. Move to **B** for production if minicloud becomes a permanent fixture with stable releases.
+
+  The pipeline code below shows Option A. Adapting to B or C is straightforward — remove or reduce the "Setup KVM and minicloud" stage.
+
 - Create `jenkins-pipelines/oss/artifacts-minicloud.jenkinsfile`:
   ```groovy
   #!groovy

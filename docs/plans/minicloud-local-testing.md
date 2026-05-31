@@ -121,33 +121,59 @@ boto3 natively supports the `AWS_ENDPOINT_URL` environment variable (added in bo
 **Minicloud Process Lifecycle**:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  SCT Test Run                                                   │
-│                                                                 │
-│  1. Config loaded → is_minicloud_active() == True               │
-│  2. get_cluster_aws() entry point                               │
-│     ├── start_minicloud()                                       │
-│     │   ├── Find/verify minicloud binary (pinned version)       │
-│     │   ├── Run minicloud-setup.sh (creates bridges, TAP)       │
-│     │   ├── Start minicloud process (subprocess, port 5000)     │
-│     │   ├── Wait for health check (HTTP GET / retry loop)       │
-│     │   └── Set AWS_ENDPOINT_URL=http://localhost:5000          │
-│     ├── [normal AWS cluster setup — all calls go to minicloud]  │
-│     ├── [test executes — SSH to VMs, CQL, stress, etc.]        │
-│     └── teardown                                                │
-│         ├── [TerminateInstances → graceful failure if missing]  │
-│         └── stop_minicloud()                                    │
-│             ├── Kill minicloud process (SIGTERM → SIGKILL)      │
-│             ├── Run minicloud-setup.sh --cleanup (remove TAPs)  │
-│             └── Clean cached state if requested                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  SCT Test Run                                                       │
+│                                                                     │
+│  1. Config loaded → is_minicloud_active() == True                   │
+│  2. get_cluster_aws() entry point                                   │
+│     ├── start_minicloud()                                           │
+│     │   ├── Find/verify minicloud binary (pinned version)           │
+│     │   ├── Run minicloud-setup.sh (creates bridges, TAP)           │
+│     │   ├── Start minicloud process (subprocess, port 5000)         │
+│     │   ├── Wait for health check (HTTP GET / retry loop)           │
+│     │   └── Set AWS_ENDPOINT_URL=http://localhost:5000              │
+│     ├── [normal AWS cluster setup — all calls go to minicloud]      │
+│     ├── [test executes — SSH to VMs, CQL, stress, etc.]            │
+│     └── teardown                                                    │
+│         ├── TerminateInstances → minicloud kills QEMU processes     │
+│         └── stop_minicloud()                                        │
+│             ├── Run minicloud-setup.sh --cleanup (remove TAPs)      │
+│             ├── Kill minicloud process (SIGTERM → SIGKILL)          │
+│             └── Clean cached state if requested (NOT AMI cache)     │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  SCT Resource Cleanup (collect-logs / clean-resources)               │
+│                                                                     │
+│  minicloud MUST be running during cleanup so TerminateInstances     │
+│  can reach it. Two scenarios:                                       │
+│                                                                     │
+│  A) Same SCT run (teardown within test):                            │
+│     minicloud is still running → TerminateInstances works normally  │
+│                                                                     │
+│  B) Separate cleanup run (e.g. Jenkins post-build, manual cleanup): │
+│     ├── Detect minicloud_endpoint_url in saved test config          │
+│     ├── start_minicloud() (re-attach to existing state dir)         │
+│     ├── TerminateInstances for orphaned VMs                         │
+│     └── stop_minicloud()                                            │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 **When minicloud starts**: At the beginning of `get_cluster_aws()`, before any EC2 API calls. This ensures the endpoint is ready before VPC/subnet creation.
 
-**When minicloud stops**: During test teardown (`TearDown` / `destroy()` flow), after instance termination attempts. This ensures VMs are cleaned up even if `TerminateInstances` is not supported.
+**When minicloud stops**: During test teardown (`TearDown` / `destroy()` flow), AFTER `TerminateInstances` has been called. The order is critical — minicloud must be alive to receive the terminate call. Only after VMs are terminated (or terminate fails gracefully) do we stop the minicloud process itself.
 
-**AMI caching**: minicloud caches downloaded AMI images in `~/.cache/minicloud/` (or configurable path). First run downloads via EBS Direct API (requires AWS credentials). Subsequent runs reuse the cache — no download needed.
+**Cleanup with minicloud**: SCT's resource cleanup (`clean-resources` command, Jenkins post-build cleanup) must also be able to terminate minicloud VMs. This requires minicloud to be running during cleanup. The `MinicloudManager` supports re-attaching to an existing minicloud state directory so that a cleanup run can discover and terminate leftover VMs from a previous failed test.
+
+**AMI caching**: minicloud caches downloaded AMI images in `~/.cache/minicloud/` (or configurable path). First run downloads via EBS Direct API (requires AWS credentials). Subsequent runs reuse the cache — no download needed. AMI cache is NEVER cleaned during teardown — it's expensive to re-download.
+
+**`TerminateInstances` in minicloud**: This is the **first prerequisite** to implement in minicloud before SCT integration can be fully clean. See [minicloud issue tracking](https://github.com/scylladb/minicloud/issues). The implementation in minicloud should:
+- Send SIGTERM to the QEMU process for the instance
+- Wait for graceful shutdown (timeout 30s), then SIGKILL
+- Clean up TAP device and bridge membership for the instance
+- Return standard EC2 `TerminateInstances` response
+
+Until `TerminateInstances` is implemented, the fallback is: SCT catches the error in teardown (minicloud-only), logs a warning, and `stop_minicloud()` kills the entire minicloud process (which kills all QEMU child processes). This is acceptable for development but not for CI where cleanup reliability matters.
 
 **Definition of Done**:
 - [ ] `is_minicloud_active()` returns True when `AWS_ENDPOINT_URL` or `minicloud_endpoint_url` is set
@@ -160,21 +186,33 @@ boto3 natively supports the `AWS_ENDPOINT_URL` environment variable (added in bo
 
 ---
 
-### Phase 2: Adapt AWSCluster for minicloud limitations — Importance: HIGH
+### Phase 2: Implement TerminateInstances in minicloud + adapt AWSCluster — Importance: HIGH
 
-**Objective**: Guard the known minicloud gaps so the existing AWS backend works transparently.
+**Objective**: Implement `TerminateInstances` in minicloud (upstream), then guard the remaining known gaps in SCT so the AWS backend works transparently.
 
 **Implementation**:
+
+**Part A — minicloud upstream (prerequisite)**:
+- Implement `TerminateInstances` in minicloud ([scylladb/minicloud](https://github.com/scylladb/minicloud)):
+  - Parse `InstanceId.N` parameters from the EC2 Query API request
+  - For each instance: send SIGTERM to QEMU process → wait 30s → SIGKILL
+  - Clean up instance's TAP device and bridge membership
+  - Remove instance from internal state (so `DescribeInstances` no longer returns it)
+  - Return standard EC2 `TerminateInstancesResponse` XML
+- This unblocks clean teardown and resource cleanup in SCT
+
+**Part B — SCT guards for remaining limitations**:
 - When `is_minicloud_active()`:
   - Force `instance_provision: "on_demand"` — skip spot, capacity reservation, dedicated host, placement group logic
   - Skip EIP allocation/association (minicloud VMs are reachable via private IP from host after `minicloud-setup.sh`)
-  - Handle missing `TerminateInstances` gracefully — catch the error in teardown **only when minicloud is active**, log warning. The `stop_minicloud()` call in teardown kills the minicloud process which destroys all VMs.
+  - If `TerminateInstances` is not yet available (version check), catch the error gracefully and rely on `stop_minicloud()` killing all QEMU processes
 - These are minimal guards in existing code paths, not new backend classes
 
 **Definition of Done**:
+- [ ] `TerminateInstances` works in minicloud — QEMU process is killed, instance disappears from `DescribeInstances`
 - [ ] `AWSCluster._create_on_demand_instances` successfully calls minicloud's `RunInstances`
 - [ ] Spot/capacity-reservation/EIP logic is skipped when minicloud is active
-- [ ] Teardown doesn't crash on missing `TerminateInstances` (minicloud only — real AWS teardown is never affected)
+- [ ] Teardown calls `TerminateInstances` normally (minicloud handles it); fallback to process kill if unsupported
 - [ ] `AWSNode` resolves IP and establishes SSH to the minicloud VM
 
 **Dependencies**: Phase 1
@@ -236,19 +274,15 @@ boto3 natively supports the `AWS_ENDPOINT_URL` environment variable (added in bo
       pipeline {
           agent { label 'sct-runner-minicloud' }  // KVM-capable runner
 
-          environment {
-              AWS_ENDPOINT_URL = 'http://localhost:5000'
-          }
-
           stages {
               stage('Install minicloud') {
                   steps {
-                      // Download pinned minicloud release or build from source
                       sh 'scripts/install-minicloud.sh'
                   }
               }
               stage('Run artifact test') {
                   steps {
+                      // SCT manages minicloud lifecycle (start/stop) automatically
                       sh '''
                           ./docker/env/hydra.sh run-test \
                               artifacts_test.ArtifactsTest.test_scylla_service \
@@ -257,17 +291,42 @@ boto3 natively supports the `AWS_ENDPOINT_URL` environment variable (added in bo
                       '''
                   }
               }
+              stage('Collect logs') {
+                  steps {
+                      // minicloud must be running for collect-logs to reach VMs
+                      // SCT handles this: starts minicloud if not running, then collects
+                      sh '''
+                          ./docker/env/hydra.sh collect-logs \
+                              --backend aws \
+                              --config test-cases/artifacts/ami-minicloud.yaml
+                      '''
+                  }
+              }
+              stage('Clean resources') {
+                  steps {
+                      // minicloud must be running for TerminateInstances to work
+                      // SCT starts minicloud, terminates VMs, then stops minicloud
+                      sh '''
+                          ./docker/env/hydra.sh clean-resources \
+                              --backend aws \
+                              --config test-cases/artifacts/ami-minicloud.yaml
+                      '''
+                  }
+              }
           }
           post {
               always {
-                  // minicloud cleanup is handled by SCT teardown, but ensure no orphans
+                  // Final safety net: ensure no orphan minicloud/QEMU processes
                   sh 'pkill -f minicloud || true'
+                  sh 'pkill -f "qemu-system" || true'
                   sh 'scripts/minicloud-setup.sh --cleanup || true'
               }
           }
       }
   }
   ```
+
+- **Critical: minicloud must be alive during cleanup stages**. The `collect-logs` and `clean-resources` stages need to reach VMs (SSH) and terminate them (`TerminateInstances`). SCT's `MinicloudManager` handles this — if minicloud is not running but `minicloud_endpoint_url` is configured, it re-starts minicloud (re-attaching to existing state directory) before performing cleanup operations.
 
 - **Runner requirements**:
   - KVM-capable (bare metal or nested virt enabled) — `i4i.large` VM needs 2 vCPU + 16 GiB RAM (or `--lightweight`: 1 vCPU + 1.5 GiB)
@@ -362,7 +421,7 @@ Requires minicloud running locally + KVM access. Marked `@pytest.mark.integratio
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | minicloud proxy doesn't support an API SCT calls during setup | Medium | Medium | minicloud proxies unknown actions to real AWS — so this should "just work". If an action fails, it's a minicloud bug to fix upstream (not an SCT workaround). |
-| Missing `TerminateInstances` causes teardown failures | High | Medium | Guard in SCT (minicloud-only). `stop_minicloud()` kills the process which destroys all VMs. File minicloud issue for upstream fix. |
+| Missing `TerminateInstances` causes teardown failures | High | Medium | Implement `TerminateInstances` in minicloud first (Phase 2A prerequisite). Fallback: `stop_minicloud()` kills all QEMU processes. CI `post { always }` block pkills orphans as safety net. |
 | minicloud process crashes mid-test | Medium | High | Health check wrapper detects crash and fails test with clear message. Jenkins `post { always }` block ensures cleanup. |
 | QEMU NVMe behavior differs from real EC2 NVMe | Medium | Low | Hardware-specific subtests get relaxed/skipped paths when minicloud is active. Not core test value. |
 | `AWS_ENDPOINT_URL` accidentally set in production CI | Low | High | Only the dedicated `sct-runner-minicloud` Jenkins label sets this. Health check verifies minicloud is reachable — if not, fail loudly. |

@@ -41,7 +41,6 @@ def call(Map params) {
     """
     currentBuild.description += "${runButton}"
 
-    // Read test_metadata from config YAML and add to build description for Argus indexing
     try {
         def configFiles = params.test_config instanceof List ? params.test_config : [params.test_config]
         for (configFile in configFiles) {
@@ -49,21 +48,21 @@ def call(Map params) {
                 def yamlContent = readYaml file: configFile
                 if (yamlContent?.test_metadata) {
                     def meta = yamlContent.test_metadata
-                    def esc = { v -> v?.toString()?.replaceAll('&', '&amp;')?.replaceAll('<', '&lt;')?.replaceAll('>', '&gt;')?.replaceAll('"', '&quot;') ?: 'n/a' }
-                    String metaHtml = """
-                        <div style="margin: 4px; font-size: 0.85em; color: #555;">
-                            <b>Metadata:</b> tier=${esc(meta.tier)} |
-                            type=${esc(meta.test_type)} |
-                            duration=${esc(meta.duration_class)} |
-                            backends=${esc(meta.supported_backends)}
-                        </div>
-                    """
-                    currentBuild.description += metaHtml
+                    def tags = []
+                    if (meta.tier) tags.add("TIER:${meta.tier.toUpperCase()}")
+                    if (meta.test_type) tags.add("TYPE:${meta.test_type.toUpperCase()}")
+                    if (meta.duration_class) tags.add("DURATION:${meta.duration_class.toUpperCase()}")
+                    if (meta.supported_backends) {
+                        meta.supported_backends.each { b -> tags.add("BACKEND:${b.toUpperCase()}") }
+                    }
+                    if (tags) {
+                        addJobTags(tags)
+                    }
                     break
                 }
             }
         }
     } catch (Exception e) {
-        echo "Warning: Could not read test_metadata for build description: ${e.message}"
+        echo "Warning: Could not set job tags from test_metadata: ${e.message}"
     }
 }

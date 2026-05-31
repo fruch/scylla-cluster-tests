@@ -5,9 +5,26 @@ and validated on config load via pydantic. It flows to Argus at test runtime via
 ``submit_sct_run()``.
 """
 
-from typing import Literal
+from pathlib import Path
+from typing import Any
 
+import yaml
 from pydantic import BaseModel, Field, field_validator
+
+
+def _load_taxonomy() -> dict[str, Any]:
+    taxonomy_path = Path(__file__).resolve().parents[1] / "docs" / "pipeline-labels" / "taxonomy.yaml"
+    with taxonomy_path.open() as fh:
+        return yaml.safe_load(fh)
+
+
+_TAXONOMY = _load_taxonomy()
+
+_TEST_TYPES: set[str] = set(_TAXONOMY["test_type"]["values"])
+_TIERS: set[str] = set(_TAXONOMY["tier"]["values"].keys())
+_DURATION_CLASSES: set[str] = set(_TAXONOMY["duration_class"]["values"].keys())
+_STRESS_TOOLS: set[str] = set(_TAXONOMY["stress_tools"]["values"])
+_WORKLOADS: set[str] = set(_TAXONOMY["workload"]["values"])
 
 
 def _get_valid_backends() -> set[str]:
@@ -21,88 +38,46 @@ class TestMetadata(BaseModel):
     """Structured metadata for test-case documentation and labeling.
 
     Embedded directly in test-case YAML files and validated on config load.
-    Flows to Argus via sct_config submission.
+    Valid values are loaded from docs/pipeline-labels/taxonomy.yaml.
     """
 
-    description: str | None = Field(
-        default=None,
-        description="Human-readable description of what this test validates (2-4 sentences).",
-    )
-    test_type: (
-        Literal[
-            "longevity",
-            "performance",
-            "upgrade",
-            "artifacts",
-            "manager",
-            "functional",
-            "scale",
-            "jepsen",
-            "gemini",
-            "features",
-            "platform-migration",
-            "vector-search",
-            "cdc",
-        ]
-        | None
-    ) = Field(
-        default=None,
-        description="Primary test category.",
-    )
-    tier: Literal["sanity", "tier1", "release", "ondemand"] | None = Field(
-        default=None,
-        description=(
-            "Test priority tier. "
-            "sanity: basic smoke tests, run on every commit. "
-            "tier1: core regression, run weekly. "
-            "release: mandatory during release qualification. "
-            "ondemand: run on-demand for investigation or niche scenarios."
-        ),
-    )
-    duration_class: Literal["short", "medium", "long"] | None = Field(
-        default=None,
-        description="Test duration bucket: short (<6h), medium (6-24h), long (>24h).",
-    )
-    supported_backends: list[str] | None = Field(
-        default=None,
-        description=(
-            "Backends this test supports. If omitted/None, the test supports ALL backends. "
-            "Values: aws, gce, azure, docker, k8s-eks, k8s-gke, k8s-local-kind, baremetal, xcloud."
-        ),
-    )
-    stress_tools: list[str] = Field(
-        default_factory=list,
-        description="Stress/load tools used: cassandra-stress, scylla-bench, ycsb, latte, gemini, etc.",
-    )
-    workload: (
-        Literal[
-            "write",
-            "read",
-            "mixed",
-            "counter",
-            "lwt",
-            "cdc",
-            "mv",
-            "si",
-            "alternator",
-            "user-profile",
-        ]
-        | None
-    ) = Field(
-        default=None,
-        description="Primary workload type.",
-    )
-    nemesis_labels: list[str] = Field(
-        default_factory=list,
-        description="Nemesis (chaos) classes used, e.g. ['SisyphusMonkey', 'ChaosMonkey'].",
-    )
-    features: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Scylla features specifically tested: encryption-at-rest, tls-ssl, "
-            "authorization, cdc, tablets, vnodes, multi-dc, rack-aware, ipv6, kms, etc."
-        ),
-    )
+    description: str | None = Field(default=None)
+    test_type: str | None = Field(default=None)
+    tier: str | None = Field(default=None)
+    duration_class: str | None = Field(default=None)
+    supported_backends: list[str] | None = Field(default=None)
+    stress_tools: list[str] = Field(default_factory=list)
+    workload: str | None = Field(default=None)
+    nemesis_labels: list[str] = Field(default_factory=list)
+    features: list[str] = Field(default_factory=list)
+
+    @field_validator("test_type", mode="before")
+    @classmethod
+    def validate_test_type(cls, v):
+        if v is not None and v not in _TEST_TYPES:
+            raise ValueError(f"Invalid test_type '{v}'. Valid: {sorted(_TEST_TYPES)}")
+        return v
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def validate_tier(cls, v):
+        if v is not None and v not in _TIERS:
+            raise ValueError(f"Invalid tier '{v}'. Valid: {sorted(_TIERS)}")
+        return v
+
+    @field_validator("duration_class", mode="before")
+    @classmethod
+    def validate_duration_class(cls, v):
+        if v is not None and v not in _DURATION_CLASSES:
+            raise ValueError(f"Invalid duration_class '{v}'. Valid: {sorted(_DURATION_CLASSES)}")
+        return v
+
+    @field_validator("workload", mode="before")
+    @classmethod
+    def validate_workload(cls, v):
+        if v is not None and v not in _WORKLOADS:
+            raise ValueError(f"Invalid workload '{v}'. Valid: {sorted(_WORKLOADS)}")
+        return v
 
     @field_validator("supported_backends", mode="before")
     @classmethod

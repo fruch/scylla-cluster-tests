@@ -262,22 +262,41 @@ Until `TerminateInstances` is implemented, the fallback is: SCT catches the erro
 
 ### Phase 4: Jenkins pipeline for minicloud artifact test — Importance: HIGH
 
-**Objective**: Add a Jenkins job that runs the AMI artifact test against minicloud on a dedicated SCT runner with KVM support.
+**Objective**: Add a Jenkins job that runs the AMI artifact test against minicloud on a standard AWS SCT runner (bare-metal `.metal` instance with KVM support), installing KVM and minicloud as part of the pipeline.
 
 **Implementation**:
 - Create `jenkins-pipelines/oss/artifacts-minicloud.jenkinsfile`:
   ```groovy
   #!groovy
-  // Jenkins pipeline for AMI artifact test via minicloud (no cloud instance costs)
+  // Jenkins pipeline for AMI artifact test via minicloud (no cloud instance costs for Scylla VMs)
+  // Runs on a standard AWS SCT runner — installs KVM + minicloud during setup
 
   def call() {
       pipeline {
-          agent { label 'sct-runner-minicloud' }  // KVM-capable runner
+          agent { label 'sct-runner' }  // Standard SCT runner (AWS .metal instance)
 
           stages {
-              stage('Install minicloud') {
+              stage('Setup KVM and minicloud') {
                   steps {
-                      sh 'scripts/install-minicloud.sh'
+                      // Install KVM/QEMU if not already present
+                      sh '''
+                          if ! command -v kvm-ok &>/dev/null || ! kvm-ok; then
+                              echo "Installing KVM/QEMU packages..."
+                              sudo apt-get update
+                              sudo apt-get install -y --no-install-recommends \
+                                  qemu-kvm qemu-system-x86 libvirt-daemon-system \
+                                  bridge-utils iproute2
+                              sudo modprobe kvm
+                              sudo modprobe kvm_intel || sudo modprobe kvm_amd || true
+                          fi
+                          # Verify KVM is available
+                          test -e /dev/kvm || (echo "ERROR: /dev/kvm not available — need bare-metal instance" && exit 1)
+                          sudo chmod 666 /dev/kvm
+                      '''
+                      // Install minicloud (pinned version)
+                      sh '''
+                          scripts/install-minicloud.sh
+                      '''
                   }
               }
               stage('Run artifact test') {
@@ -319,7 +338,7 @@ Until `TerminateInstances` is implemented, the fallback is: SCT catches the erro
                   // Final safety net: ensure no orphan minicloud/QEMU processes
                   sh 'pkill -f minicloud || true'
                   sh 'pkill -f "qemu-system" || true'
-                  sh 'scripts/minicloud-setup.sh --cleanup || true'
+                  sh 'sudo scripts/minicloud-setup.sh --cleanup || true'
               }
           }
       }
@@ -328,25 +347,66 @@ Until `TerminateInstances` is implemented, the fallback is: SCT catches the erro
 
 - **Critical: minicloud must be alive during cleanup stages**. The `collect-logs` and `clean-resources` stages need to reach VMs (SSH) and terminate them (`TerminateInstances`). SCT's `MinicloudManager` handles this — if minicloud is not running but `minicloud_endpoint_url` is configured, it re-starts minicloud (re-attaching to existing state directory) before performing cleanup operations.
 
-- **Runner requirements**:
-  - KVM-capable (bare metal or nested virt enabled) — `i4i.large` VM needs 2 vCPU + 16 GiB RAM (or `--lightweight`: 1 vCPU + 1.5 GiB)
+- **Runner requirements — standard AWS SCT runner with `.metal` instance type**:
+  - AWS `.metal` instance (e.g. `i3.metal`, `m5.metal`, `c5.metal`) — provides bare-metal KVM access
+  - Alternatively: any instance with nested virtualization enabled (`.metal` guarantees it)
   - At minimum: 4 vCPU, 32 GiB RAM, 100 GiB disk (for AMI cache + VM overhead + SCT itself)
-  - Linux kernel with TAP/bridge support (standard on SCT runners)
+  - The minicloud `--lightweight` mode (1 vCPU + 1.5 GiB per VM) makes resource usage minimal
   - AWS credentials available (for minicloud's proxy passthrough to real AWS APIs)
-  - Label: `sct-runner-minicloud`
+  - Standard `sct-runner` label — no special label needed since KVM is installed in-pipeline
 
 - Add `scripts/install-minicloud.sh`:
-  - Downloads pinned minicloud binary (from GitHub releases or builds from pinned commit)
-  - Verifies checksum
-  - Places binary in `$PATH`
-  - Runs `minicloud-setup.sh` for initial network setup
+  ```bash
+  #!/bin/bash
+  set -euo pipefail
+
+  MINICLOUD_VERSION="${MINICLOUD_VERSION:-v0.3.0}"
+  MINICLOUD_REPO="scylladb/minicloud"
+  INSTALL_DIR="/usr/local/bin"
+
+  # Check if already installed at correct version
+  if command -v minicloud &>/dev/null; then
+      installed=$(minicloud --version 2>/dev/null || echo "unknown")
+      if [[ "$installed" == *"$MINICLOUD_VERSION"* ]]; then
+          echo "minicloud $MINICLOUD_VERSION already installed"
+          exit 0
+      fi
+  fi
+
+  echo "Installing minicloud $MINICLOUD_VERSION..."
+
+  # Download pre-built binary from GitHub releases (preferred)
+  # Falls back to building from source if no release binary available
+  RELEASE_URL="https://github.com/${MINICLOUD_REPO}/releases/download/${MINICLOUD_VERSION}/minicloud-linux-amd64"
+  if curl -fsSL --head "$RELEASE_URL" &>/dev/null; then
+      sudo curl -fsSL -o "${INSTALL_DIR}/minicloud" "$RELEASE_URL"
+      sudo chmod +x "${INSTALL_DIR}/minicloud"
+  else
+      echo "No pre-built binary found, building from source..."
+      # Requires Rust toolchain
+      command -v cargo &>/dev/null || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      source "$HOME/.cargo/env"
+      TMPDIR=$(mktemp -d)
+      git clone --depth 1 --branch "$MINICLOUD_VERSION" \
+          "https://github.com/${MINICLOUD_REPO}.git" "$TMPDIR/minicloud"
+      cd "$TMPDIR/minicloud" && cargo build --release
+      sudo cp target/release/minicloud "${INSTALL_DIR}/minicloud"
+      rm -rf "$TMPDIR"
+  fi
+
+  # Copy networking setup script
+  sudo cp scripts/minicloud-setup.sh "${INSTALL_DIR}/minicloud-setup.sh"
+  sudo chmod +x "${INSTALL_DIR}/minicloud-setup.sh"
+
+  echo "minicloud installed: $(minicloud --version)"
+  ```
 
 - **Trigger**: Can run on every PR that touches `artifacts_test.py`, `sdcm/cluster_aws.py`, or AMI-related code. Also runs nightly as a sanity check.
 
 **Definition of Done**:
 - [ ] Jenkins pipeline exists and can be triggered manually
-- [ ] Runner with `sct-runner-minicloud` label is provisioned with KVM support
-- [ ] Pipeline installs minicloud, runs the artifact test, and cleans up
+- [ ] Pipeline installs KVM and minicloud on a standard AWS SCT runner
+- [ ] Pipeline runs the artifact test, collects logs, and cleans resources
 - [ ] Pipeline passes consistently (not flaky)
 - [ ] AMI cache persists across runs on the runner (no re-download every time)
 
@@ -427,4 +487,4 @@ Requires minicloud running locally + KVM access. Marked `@pytest.mark.integratio
 | `AWS_ENDPOINT_URL` accidentally set in production CI | Low | High | Only the dedicated `sct-runner-minicloud` Jenkins label sets this. Health check verifies minicloud is reachable — if not, fail loudly. |
 | AMI first-download requires AWS credentials + takes time | Low | Low | One-time cost. Cached on Jenkins runner across builds. Document required IAM permissions. |
 | minicloud is under active development — API may change | Medium | Medium | Pin to specific minicloud version. Health check at startup catches incompatibilities early. |
-| Jenkins runner doesn't have KVM support | Low | High | Provision bare-metal runner or enable nested virt. Verify with `kvm-ok` in pipeline setup stage. |
+| Jenkins runner doesn't have KVM support | Low | High | Use AWS `.metal` instances (e.g. `i3.metal`) which provide bare-metal KVM access. Pipeline verifies `/dev/kvm` exists and fails loudly if not. KVM + QEMU installed in-pipeline if missing. |

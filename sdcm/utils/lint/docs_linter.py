@@ -27,7 +27,11 @@ class LintResult:
 
 
 def lint_test_metadata(config_path: Path, taxonomy_path: Path | None = None) -> LintResult:
-    """Validate test_metadata in a test-case YAML against taxonomy and config content."""
+    """Validate test_metadata in a test-case YAML against taxonomy and config content.
+
+    Note: taxonomy_path is accepted for future extensibility but currently unused —
+    validation is performed against the module-level taxonomy loaded at import time.
+    """
     result = LintResult(file_path=str(config_path))
 
     try:
@@ -47,7 +51,7 @@ def lint_test_metadata(config_path: Path, taxonomy_path: Path | None = None) -> 
     # Validate via pydantic
     try:
         meta = TestMetadata(**raw_meta)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         result.errors.append(f"TD-003: Invalid metadata values: {exc}")
         return result
 
@@ -104,15 +108,17 @@ def cross_reference_config(config_path: Path) -> LintResult:
 
     try:
         meta = TestMetadata(**raw_meta)
-    except ValueError:
+    except (TypeError, ValueError):
         return result
 
     # TD-005: nemesis_labels should match nemesis_class_name
     nemesis_class = config.get("nemesis_class_name")
     if nemesis_class and meta.nemesis_labels:
-        if nemesis_class not in meta.nemesis_labels:
+        nemesis_classes = [nemesis_class] if isinstance(nemesis_class, str) else list(nemesis_class)
+        missing = set(nemesis_classes) - set(meta.nemesis_labels)
+        if missing:
             result.warnings.append(
-                f"TD-005: nemesis_class_name '{nemesis_class}' not in nemesis_labels {meta.nemesis_labels}"
+                f"TD-005: nemesis_class_name {sorted(missing)} not in nemesis_labels {meta.nemesis_labels}"
             )
 
     # TD-006: stress_tools should match stress commands in config

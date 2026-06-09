@@ -240,6 +240,8 @@ class JenkinsPipelines:
             if not config or "test_metadata" not in config:
                 return ""
             meta = config["test_metadata"]
+            if not isinstance(meta, dict):
+                return ""
             description = meta.get("description", "")
             tier = meta.get("tier", "n/a")
             test_type = meta.get("test_type", "n/a")
@@ -255,7 +257,7 @@ class JenkinsPipelines:
             lines.append(f"duration_class: {duration_class}")
             lines.append(f"supported_backends: {backends}")
             return "\n".join(lines)
-        except (OSError, KeyError, ValueError, TypeError):
+        except (OSError, KeyError, ValueError, TypeError, yaml.YAMLError):
             LOGGER.debug("Could not read test_metadata from %s", yaml_path, exc_info=True)
             return ""
 

@@ -58,6 +58,7 @@ stress_tools:
   description: "Stress/load generation tools used in the test"
   values:
     - cassandra-stress
+    - cql-stress-cassandra-stress
     - scylla-bench
     - ycsb
     - latte

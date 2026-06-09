@@ -99,3 +99,25 @@ class TestMetadata(BaseModel):
             if tool not in _STRESS_TOOLS:
                 raise ValueError(f"Invalid stress_tool '{tool}'. Valid: {sorted(_STRESS_TOOLS)}")
         return v
+
+    @field_validator("nemesis_labels", mode="before")
+    @classmethod
+    def validate_nemesis_labels(cls, v):
+        if not v:
+            return v
+        valid = set(_TAXONOMY["nemesis_labels"]["values"])
+        for label in v:
+            if label not in valid:
+                raise ValueError(f"Invalid nemesis_label '{label}'. Valid: {sorted(valid)}")
+        return v
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def validate_features(cls, v):
+        if not v:
+            return v
+        valid = set(_TAXONOMY["features"]["values"])
+        for feature in v:
+            if feature not in valid:
+                raise ValueError(f"Invalid feature '{feature}'. Valid: {sorted(valid)}")
+        return v

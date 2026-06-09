@@ -2358,17 +2358,22 @@ def update_taxonomy_nemesis(diff):
     with open(taxonomy_path) as f:
         content = f.read()
 
-    marker = "  # ... auto-populated by pre-commit hook from NemesisRegistry"
+    marker = "    # ... auto-populated by pre-commit hook from NemesisRegistry"
     nemesis_block_pattern = re.compile(
-        r"(nemesis_labels:.*?values:\n)(.*?)(\n  # \.\.\. auto-populated.*?\n)",
+        r"(nemesis_labels:.*?values:\n)(.*?)(\n    # \.\.\. auto-populated.*?\n)",
         re.DOTALL,
     )
 
     new_values = "".join(f"    - {name}\n" for name in nemesis_names)
-    new_content = nemesis_block_pattern.sub(
+    new_content, replacements = nemesis_block_pattern.subn(
         lambda m: m.group(1) + new_values + marker + "\n",
         content,
+        count=1,
     )
+
+    if replacements != 1:
+        click.secho(f"nemesis_labels block not found in {taxonomy_path}", fg="red")
+        sys.exit(1)
 
     if new_content == content:
         sys.exit(0)
@@ -2757,6 +2762,8 @@ def create_argus_test_run():
             return
         test_config.set_test_id_only(params.get("test_id"))
         test_config.init_argus_client(params)
+        metadata = params.get("test_metadata")
+        metadata_dict = metadata.model_dump() if metadata else None
         test_config.argus_client().submit_sct_run(
             job_name=get_job_name(),
             job_url=get_job_url(),
@@ -2765,6 +2772,7 @@ def create_argus_test_run():
             origin_url=git_status.get("upstream.url"),
             branch_name=git_status.get("branch.upstream"),
             sct_config=None,
+            test_metadata=metadata_dict,
         )
         LOGGER.info("Initialized Argus TestRun with test id %s", get_test_config().argus_client().run_id)
     except ArgusClientError:

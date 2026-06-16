@@ -5,6 +5,7 @@
     "helpers:pinGitHubActionDigestsToSemver"
   ],
   "commitBodyTable": true,
+  "recreateWhen": "always",
   "ignorePresets": [
     "group:monorepos",
     "group:recommended"
@@ -31,8 +32,8 @@
   ],
   "customDatasources": {
     "scylla-doctor": {
-      "defaultRegistryUrlTemplate": "https://downloads.scylladb.com/downloads/scylla-doctor/tar/",
-      "format": "html"
+      "defaultRegistryUrlTemplate": "https://s3.amazonaws.com/downloads.scylladb.com?prefix=downloads/scylla-doctor/tar/&delimiter=/",
+      "format": "plain"
     }
   },
   "customManagers": [
@@ -47,7 +48,7 @@
       ],
       "depNameTemplate": "scylla-doctor",
       "datasourceTemplate": "custom.scylla-doctor",
-      "extractVersionTemplate": "^scylla-doctor-(?<version>[\\d.]+)\\.tar\\.gz$",
+      "extractVersionTemplate": "scylla-doctor-(?<version>[\\d.]+)\\.tar\\.gz",
       "versioningTemplate": "semver-coerced"
     }
   ],

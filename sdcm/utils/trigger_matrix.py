@@ -258,6 +258,50 @@ def _resolve_version_from_ami(ami_id: str, region: str) -> str:
     return ""
 
 
+def resolve_architecture_from_ami(ami_id: str, region: str | None = None) -> str:
+    """Detect the CPU architecture of an AWS AMI.
+
+    Args:
+        ami_id: AWS AMI ID (e.g., ami-0123456789abcdef0).
+        region: AWS region. Defaults to DEFAULT_AWS_REGION.
+
+    Returns:
+        Architecture string ('x86_64' or 'arm64'), or empty string on failure.
+    """
+    region = region or DEFAULT_AWS_REGION
+    try:
+        import boto3  # noqa: PLC0415 - optional cloud dependency
+        from sdcm.keystore import KeyStore  # noqa: PLC0415 - circular import avoidance
+
+        # Try Scylla images account first (private AMIs)
+        try:
+            scylla_creds = KeyStore().get_scylladb_upload_credentials()
+            ec2 = boto3.resource(
+                "ec2",
+                region_name=region,
+                aws_access_key_id=scylla_creds["user"],
+                aws_secret_access_key=scylla_creds["password"],
+            )
+            image = ec2.Image(ami_id)
+            image.reload()
+            if image.architecture:
+                logger.info("Resolved AMI %s → architecture=%s", ami_id, image.architecture)
+                return image.architecture
+        except Exception:  # noqa: BLE001 - fall through to default credentials
+            pass
+
+        # Fallback: default credentials
+        ec2 = boto3.resource("ec2", region_name=region)
+        image = ec2.Image(ami_id)
+        image.reload()
+        if image.architecture:
+            logger.info("Resolved AMI %s → architecture=%s", ami_id, image.architecture)
+            return image.architecture
+    except Exception as exc:  # noqa: BLE001 - best-effort
+        logger.warning("Failed to resolve architecture from AMI %s: %s", ami_id, exc)
+    return ""
+
+
 def _resolve_version_from_gce_image(image_name: str) -> str:
     """Get scylla_version label from a GCE image.
 
@@ -503,8 +547,9 @@ def filter_jobs(
     labels_selector: str | None = None,
     backend: str | None = None,
     skip_jobs: list[str] | None = None,
+    image_arch: str | None = None,
 ) -> list[JobConfig]:
-    """Filter jobs based on version exclusion, labels, backend, and skip list.
+    """Filter jobs based on version exclusion, labels, backend, skip list, and architecture.
 
     Args:
         jobs: List of job configurations to filter.
@@ -515,6 +560,9 @@ def filter_jobs(
             When None, no label filtering is applied.
         backend: Filter by backend (e.g., 'aws', 'gce', 'azure').
         skip_jobs: List of job names to skip.
+        image_arch: CPU architecture from the provided image ('x86_64' or 'arm64').
+            When set, filters jobs by architecture: arm64 images only trigger jobs
+            with 'aarch64' label, x86_64 images skip jobs with 'aarch64' label.
 
     Returns:
         Filtered list of JobConfig objects.
@@ -540,6 +588,16 @@ def filter_jobs(
         if backend and job.backend != backend:
             logger.debug("Skipping job '%s': backend '%s' != '%s'", job.job_name, job.backend, backend)
             continue
+
+        # Skip by architecture (derived from supplied image)
+        if image_arch:
+            job_is_arm = "aarch64" in job.labels
+            if image_arch == "arm64" and not job_is_arm:
+                logger.debug("Skipping job '%s': ARM image but job has no 'aarch64' label", job.job_name)
+                continue
+            if image_arch == "x86_64" and job_is_arm:
+                logger.debug("Skipping job '%s': x86_64 image but job has 'aarch64' label", job.job_name)
+                continue
 
         # Skip by version inclusion (prefix match — only run for listed versions)
         if job.include_versions and not _is_version_included(scylla_version, job.include_versions):
@@ -1167,6 +1225,7 @@ def trigger_matrix(  # noqa: PLR0914
     skip_jobs: str | None = None,
     dry_run: bool = False,
     email_recipients: list[str] | None = None,
+    image_arch: str | None = None,
     **overrides,
 ) -> dict:
     """Main entry point: load matrix, filter, build params, trigger jobs.
@@ -1212,6 +1271,7 @@ def trigger_matrix(  # noqa: PLR0914
         labels_selector=labels_selector,
         backend=backend,
         skip_jobs=skip_list,
+        image_arch=image_arch,
     )
 
     logger.info(

@@ -75,6 +75,7 @@ from sdcm.utils.ci_tools import get_job_name, get_job_url
 from sdcm.utils.decorators import retrying
 from sdcm.utils.git import get_git_commit_id, get_git_status_info, clone_repo
 from sdcm.utils.trigger_matrix import (
+    resolve_architecture_from_ami,
     resolve_scylla_version_from_image,
     resolve_to_full_version,
     trigger_matrix as run_trigger_matrix,
@@ -3395,6 +3396,13 @@ def trigger_matrix_cmd(  # noqa: PLR0912, PLR0913
             click.echo(f"Error resolving full version: {exc}", err=True)
             sys.exit(1)
 
+    # Detect AMI architecture for arch-aware job filtering
+    image_arch = None
+    if scylla_ami_id:
+        image_arch = resolve_architecture_from_ami(scylla_ami_id, region=region)
+        if image_arch:
+            click.echo(f"Resolved AMI architecture: {image_arch}")
+
     overrides = {}
     if stress_duration:
         overrides["stress_duration"] = stress_duration
@@ -3428,6 +3436,7 @@ def trigger_matrix_cmd(  # noqa: PLR0912, PLR0913
             skip_jobs=skip_jobs,
             dry_run=dry_run,
             email_recipients=email_recipients.split(",") if email_recipients else None,
+            image_arch=image_arch,
             **overrides,
         )
     except Exception as exc:  # noqa: BLE001

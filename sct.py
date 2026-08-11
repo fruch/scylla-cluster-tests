@@ -2939,6 +2939,15 @@ def create_runner_instance(
     try:
         verify_ssh()
         LOGGER.info("Successfully connected the SCT Runner. Public IP: %s", runner_public_ip)
+        # STAGING ONLY - not part of PR 15618. A fresh sct-runner boots without kvm_intel
+        # loaded, so /dev/kvm does not exist and 'Start Minicloud' fails immediately (staging
+        # build #9). Dropped from the PR per review; QATOOLS-374 tracks loading it in the
+        # sct-runner image, after which this goes away. Guarded on minicloud so no other job's
+        # runner runs it.
+        if is_minicloud_active(params=sct_config):
+            remoter.sudo(
+                "modprobe kvm_intel || modprobe kvm_amd || true", timeout=60, ignore_status=True, verbose=False
+            )
         with sct_runner_ip_path.open(mode="w", encoding="utf-8") as sct_runner_ip_file:
             sct_runner_ip_file.write(runner_public_ip)
     except Exception:  # noqa: BLE001

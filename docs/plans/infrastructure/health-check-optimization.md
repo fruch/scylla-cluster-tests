@@ -212,6 +212,79 @@ this plan.
 - [ ] No change to which checks run or when the gate passes or fails
 - [ ] Baseline measured on a multi-node cluster and recorded in this plan
 
+**Measured baseline (2026-09-17)**: three runs on 6-node clusters, **66 gates
+and 399 per-node samples**. Gate wall-clock 6.6-8.8 s. **Waiting was 0.0 s in
+every gate and every one of the 399 samples completed on its first attempt.**
+
+Per node per gate, from the run with millisecond resolution:
+
+| Operation | Time | Share |
+|---|---|---|
+| nodetool status | 0.697 s | 37.8% |
+| token ring | 0.503 s | 27.3% |
+| Raft group0 | 0.231 s | 12.6% |
+| gossip | 0.206 s | 11.2% |
+| peers | 0.206 s | 11.2% |
+| **total** | **1.843 s** | |
+
+The two most expensive operations are **65%** of the work, not the ~80% the
+earlier tenth-of-a-second logs implied, and Raft group0 and peers are ~12% each
+rather than the ~5% that rounding suggested. Recording an ordering rather than
+means until the resolution was raised is what kept that error out of this plan.
+
+**The retry path has never fired, including when provoked.** The third run was
+built specifically to trigger it — nemesis interval forced to zero and the pool
+restricted to disruptive nemesis, both verified live — so the gate began a median
+1.5 s after the previous disruption ended, with the settle window effectively
+removed. All six nodes still reported the cluster fully `UN` every time. Each
+nemesis's own post-condition converges the cluster faster than the ~1.5 s of
+bookkeeping before the gate runs. See Phase 4 for what that means for the flat
+retry delay.
+
+---
+
+### Phase 8: Account for validation cost, not just gathering
+
+**Importance**: Important
+**Dependencies**: Phase 3
+**Tracked as**: [SCT-1002](https://scylladb.atlassian.net/browse/SCT-1002)
+
+The Phase 3 measurement leaves most of the gate unexplained. Gathering summed to
+about 10.7 s across six nodes and ran five-at-a-time, so it should have finished
+in roughly 3.6 s of wall-clock; the gate took 8.0 s. That is 2.2x worse than
+ideal, and only 1.34x better than doing the work fully serially. Well over half
+the gate is outside everything Phase 3 measures.
+
+The ratio is not a fluke of one machine: three runs across two instance families
+produced 1.32, 1.34 and 1.37, all within 0.05. Whatever serialises the parallel
+path is therefore not CPU starvation on the runner.
+
+The likely reason is that Phase 3 times only the gathering. The five validators
+that compare that state run outside any timing block, and they are the part that
+does not parallelise: each node's validators walk every other node's entry, so
+the work is quadratic in cluster size, and being pure Python it is serialised by
+the interpreter however many workers the gate is given.
+
+**This is a hypothesis with arithmetic behind it, not a diagnosis.** The first
+deliverable is to measure validation separately and confirm or kill it. Both
+runs so far are 6-node, so nothing is yet known about how the effect scales —
+which is the more interesting question, because validation grows with the square
+of node count while gathering grows linearly. If that holds, a 60-node gate would
+be dominated by validation and extra workers would not help.
+
+**Definition of Done**:
+- [ ] Per-operation timings are logged with enough resolution to be averaged
+      (the current tenth-of-a-second rounding pins three of the five operations
+      to the floor and makes their means meaningless)
+- [ ] Validation time is measured per node and reported alongside gathering
+- [ ] The gate accounts for its wall-clock: gathering, validation and overhead
+      sum to the measured total, with any remainder named
+- [ ] Measurement on clusters of different **node counts** shows how validation
+      scales, confirming or refuting the quadratic expectation (the two runs so
+      far differ in instance size, not in node count, so they do not answer this)
+- [ ] If confirmed, a follow-up is opened for the fix — this phase measures, it
+      does not optimise
+
 ---
 
 ### Phase 4: Backoff and cluster-level short-circuit

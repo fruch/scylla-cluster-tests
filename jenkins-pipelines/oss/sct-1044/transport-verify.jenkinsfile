@@ -1,0 +1,84 @@
+#!groovy
+// SCT-1044 verification (scratch, not for merge): a hydra `docker run` whose dial-stdio
+// `wait` stream sits idle for 10 minutes, through the same builder -> runner path CI uses.
+// Three variants run in parallel against one fresh SCT runner:
+//   old       - keepalive off, public IP (= hydra before the fix)  -> expected to hang (timeout rc=124)
+//   keepalive - keepalive on,  public IP                          -> expected rc=0 after ~600s
+//   fixed     - the fix as shipped (private IP + keepalive)       -> expected rc=0 after ~600s
+pipeline {
+    agent { label 'aws-sct-builders-eu-west-1-v4-asg' }
+    // hydra syncs the repo dir to the runner and works in /home/ubuntu/scylla-cluster-tests,
+    // so check out into that directory name, like the real pipelines do
+    options { timeout(time: 60, unit: 'MINUTES'); timestamps(); skipDefaultCheckout() }
+    environment {
+        AWS_ACCESS_KEY_ID     = credentials('qa-aws-secret-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('qa-aws-secret-access-key')
+        SCT_TEST_ID = UUID.randomUUID().toString()
+        SCT_CLUSTER_BACKEND = 'aws'
+        SCT_REGION_NAME = 'eu-west-1'
+        SCT_CONFIG_FILES = '["test-cases/longevity/longevity-mini-test-1h.yaml"]'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                dir('scylla-cluster-tests') { checkout scm }
+            }
+        }
+        stage('Create SCT runner') {
+            steps {
+                dir('scylla-cluster-tests') {
+                    sh '''#!/bin/bash
+                set -xe
+                rm -fv sct_runner_ip
+                ./docker/env/hydra.sh create-runner-instance --cloud-provider aws --region eu-west-1 \
+                    --availability-zone a --test-id ${SCT_TEST_ID} --duration 60 --test-name sct-1044-transport-verify
+                cat sct_runner_ip
+                '''
+                }
+            }
+        }
+        stage('Idle dial-stdio, 3 variants') {
+            steps {
+                dir('scylla-cluster-tests') {
+                    sh '''#!/bin/bash
+                set +e
+                RUNNER_IP=$(cat sct_runner_ip)
+                # hydra rejoins and evals its arguments, so a quoted `bash -c "..."` loses its quoting;
+                # a script in the workspace (hydra rsyncs it to the runner) has nothing to lose
+                printf '#!/bin/bash\nsleep 600\necho container-done\n' > sct1044_idle.sh
+                run_variant () {  # name, env assignments...
+                    local name=$1; shift
+                    local start=$SECONDS
+                    env "$@" timeout 900 ./docker/env/hydra.sh --execute-on-runner "${RUNNER_IP}" \
+                        bash ./sct1044_idle.sh > "variant-${name}.log" 2>&1
+                    local rc=$?
+                    echo "RESULT variant=${name} rc=${rc} after $((SECONDS - start))s (rc=124: still hung at the 900s timeout)"
+                }
+                # staggered: parallel rsync --delete of the same tree, and hydra names containers ${SCT_TEST_ID}_<epoch>
+                run_variant old HYDRA_SSH_ALIVE_INTERVAL=0 HYDRA_RUNNER_VIA_PRIVATE_IP=false > result-old.txt &
+                sleep 45  # let the first rsync --delete of the tree finish before the next starts
+                run_variant keepalive HYDRA_RUNNER_VIA_PRIVATE_IP=false > result-keepalive.txt &
+                sleep 45  # let the first rsync --delete of the tree finish before the next starts
+                run_variant fixed > result-fixed.txt &
+                wait
+                for v in old keepalive fixed; do
+                    echo "===== ${v}"; grep -E "Connecting to the SCT runner|Going to run|container-done|error waiting|Connection timed out|exited rc=|ANOMALY" "variant-${v}.log"
+                    cat "result-${v}.txt"
+                done
+                '''
+                }
+            }
+        }
+    }
+    post {
+        always {
+            dir('scylla-cluster-tests') {
+                sh '''#!/bin/bash
+            set -x
+            RUNNER_IP=$(cat sct_runner_ip || echo "")
+            [[ -n "${RUNNER_IP}" ]] && ./docker/env/hydra.sh clean-runner-instances --test-status SUCCESS --runner-ip "${RUNNER_IP}" --backend aws || true
+            '''
+            }
+        }
+    }
+}

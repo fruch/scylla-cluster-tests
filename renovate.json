@@ -3,6 +3,17 @@
   "extends": [
     "config:recommended"
   ],
+<<<<<<< HEAD
+||||||| parent of 32254d50a8 (chore(deps): pin uv to 0.12.23 everywhere it writes or installs)
+  "commitBodyTable": true,
+  "recreateWhen": "always",
+=======
+  "commitBodyTable": true,
+  "constraints": {
+    "uv": "0.12.23"
+  },
+  "recreateWhen": "always",
+>>>>>>> 32254d50a8 (chore(deps): pin uv to 0.12.23 everywhere it writes or installs)
   "ignorePresets": [
     "group:monorepos",
     "group:recommended"
@@ -47,6 +58,24 @@
       "datasourceTemplate": "custom.scylla-doctor",
       "extractVersionTemplate": "^scylla-doctor-(?<version>[\\d.]+)\\.tar\\.gz$",
       "versioningTemplate": "semver-coerced"
+    },
+    {
+      "customType": "regex",
+      "description": "Keep every uv pin on one version: Renovate's own lock runs, the hydra image, the image build job and the devcontainer",
+      "managerFilePatterns": [
+        "/^renovate\\.json$/",
+        "/^Dockerfile$/",
+        "/^\\.github/workflows/build-docker-image\\.yaml$/",
+        "/^\\.devcontainer/setup\\.sh$/"
+      ],
+      "matchStrings": [
+        "\"uv\":\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\"",
+        "ghcr\\.io/astral-sh/uv:(?<currentValue>\\d+\\.\\d+\\.\\d+)",
+        "pip install uv==(?<currentValue>\\d+\\.\\d+\\.\\d+)",
+        "astral\\.sh/uv/(?<currentValue>\\d+\\.\\d+\\.\\d+)/install\\.sh"
+      ],
+      "depNameTemplate": "uv",
+      "datasourceTemplate": "pypi"
     }
   ],
   "packageRules": [
@@ -121,6 +150,19 @@
         "at any time"
       ],
       "enabled": true
+    },
+    {
+      "description": "uv bumps change the hydra image, and the image build re-locks uv.lock with the new uv",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchPackageNames": [
+        "uv"
+      ],
+      "enabled": true,
+      "addLabels": [
+        "New Hydra Version"
+      ]
     }
   ],
   "vulnerabilityAlerts": {

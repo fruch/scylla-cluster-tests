@@ -1,0 +1,16 @@
+#!groovy
+
+// trick from https://github.com/jenkinsci/workflow-cps-global-lib-plugin/pull/43
+def lib = library identifier: 'sct@snapshot', retriever: legacySCM(scm)
+
+// SCT-1215: the 1-DB-node read throughput steps on lab hosts: DB on a spider, loader + monitor on monster,
+// SCT on monster's agent. longevityPipeline, since perfRegressionParallelPipeline always creates a cloud runner.
+longevityPipeline(
+    backend: 'baremetal',
+    region: 'eu-west-1',
+    test_name: 'performance_regression_gradual_grow_throughput.PerformanceRegressionPredefinedStepsTest.test_read_gradual_increase_load',
+    test_config: '''["test-cases/performance/perf-regression-predefined-throughput-steps-1-node.yaml", "configurations/performance/single-node/i7i.4xlarge.yaml", "configurations/disable_kms.yaml", "configurations/disable_speculative_retry.yaml", "configurations/baremetal/perf-1-node-lab.yaml"]''',
+    local_agent: true,
+    jenkins_label: 'minicloud-kvm-builders-artifacts',
+    provision_type: 'on_demand',
+)

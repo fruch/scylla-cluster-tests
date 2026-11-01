@@ -1,0 +1,63 @@
+# SCT-1215: the 1-DB-node throughput-steps test on lab hosts, layered after
+# test-cases/performance/perf-regression-predefined-throughput-steps-1-node.yaml and
+# configurations/performance/single-node/i7i.4xlarge.yaml.
+# The DB node is mini-spider1, taken out of its releng builder pools for the run; the loader and monitor share
+# monster, whose agent runs SCT. All of them sit on one lab network, so nothing needs tunnels or public addresses.
+# The hosts config is sct/baremetal_sct1215_perf_1_node.json in the KeyStore.
+cluster_backend: baremetal
+s3_baremetal_config: baremetal_sct1215_perf_1_node
+user_credentials_path: '~/.ssh/scylla_test_id_ed25519'
+ip_ssh_connections: private
+use_preinstalled_scylla: false
+scylla_repo: 'https://downloads.scylladb.com/rpm/centos/scylla-2025.3.repo'
+scylla_linux_distro: 'centos'
+# mini-spider1's only disk holds the OS: /var/lib/scylla stays on the root XFS filesystem. Drop for a host with a data disk
+scylla_setup_no_raid: true
+# No preset io_properties exist for a lab host: measure its disk with iotune (scylla_io_setup)
+force_run_iotune: true
+# mini-spider1 has 32 threads and 60 GB: leave 2 threads and about 10 GB to the OS and the Jenkins agent
+append_scylla_args: '--smp 30 --memory 50G --blocked-reactor-notify-ms 5 --abort-on-lsa-bad-alloc 1 --abort-on-seastar-bad-alloc --abort-on-internal-error 1 --abort-on-ebadf 1'
+n_monitor_nodes: 1
+# AWS-only placement settings of the 1-node test-case
+use_capacity_reservation: false
+use_placement_group: false
+
+user_prefix: 'sct1215-perf-1-node'
+
+# A trial, not a measurement: a 20 GB dataset on a shared root disk, and 5-minute steps
+test_duration: 240
+perf_gradual_step_duration: {"read": '5m', "write": None, "mixed": '5m', "read_disk_only": '5m'}
+# monster (Ivy Bridge) also runs SCT and the monitor: 1900 mixed threads would make the loader the bottleneck
+perf_gradual_threads: {"read": 620, "write": 400, "mixed": 800, "read_disk_only": 620}
+
+prepare_write_cmd: [
+  "cassandra-stress write  cl=ONE n=20000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=8 cql3 native -rate threads=200 throttle=75000/s -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=1..20000000"
+]
+
+stress_cmd_w: [
+  "cassandra-stress write no-warmup cl=ONE n=20000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..20000000"
+]
+
+stress_cmd_r: [
+  "cassandra-stress read no-warmup  cl=ONE duration=$duration -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..2000000"
+]
+
+stress_cmd_cache_warmup: [
+  "cassandra-stress read  cl=ONE n=2000000 -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..2000000"
+]
+
+stress_cmd_m: [
+  "cassandra-stress mixed no-warmup  cl=ONE duration=$duration -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..2000000"
+]
+
+stress_cmd_read_disk: [
+  "cassandra-stress read no-warmup  cl=ONE duration=$duration -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..20000000"
+]
+
+# The default 10 ms P99 limit was set on AWS hardware; unthrottled over the lab's 1 GbE link P99 is ~17 ms,
+# so a fixed limit only marks every step as failed. Argus still records the latencies
+latency_decorator_error_thresholds:
+  write: {default: {P90 write: {fixed_limit: null}, P99 write: {fixed_limit: null}}}
+  read: {default: {P90 read: {fixed_limit: null}, P99 read: {fixed_limit: null}}}
+  read_disk_only: {default: {P90 read: {fixed_limit: null}, P99 read: {fixed_limit: null}}}
+  mixed: {default: {P90 write: {fixed_limit: null}, P90 read: {fixed_limit: null}, P99 write: {fixed_limit: null}, P99 read: {fixed_limit: null}}}

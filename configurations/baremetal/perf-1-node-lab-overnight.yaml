@@ -1,0 +1,6 @@
+# SCT-1215: the overnight soak, layered after perf-1-node-lab.yaml: 24 unthrottled mixed rounds of 30 minutes each
+# (about 13.5 hours with the compaction waits between rounds), to see how steady the lab hosts are over time.
+perf_gradual_throttle_steps: {"read": ['unthrottled'], "mixed": ['unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled', 'unthrottled'], "write": ['unthrottled'], "read_disk_only": ['unthrottled']}
+perf_gradual_step_duration: {"read": '5m', "write": None, "mixed": '30m', "read_disk_only": '5m'}
+# setup and the dataset (~25 min) + 24 x (30 min + up to ~4 min compaction wait) + teardown (~20 min)
+test_duration: 900

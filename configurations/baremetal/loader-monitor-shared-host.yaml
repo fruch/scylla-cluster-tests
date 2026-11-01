@@ -9,7 +9,6 @@ ip_ssh_connections: public
 # Scylla advertises the public IP, so the driver on the loader host gets a reachable address
 intra_node_comm_public: true
 use_preinstalled_scylla: false
-use_mgmt: false
 
 n_db_nodes: 1
 n_loaders: 1

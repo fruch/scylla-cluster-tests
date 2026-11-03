@@ -11,6 +11,6 @@ longevityPipeline(
     test_name: 'performance_regression_gradual_grow_throughput.PerformanceRegressionPredefinedStepsTest.test_read_gradual_increase_load',
     test_config: '''["test-cases/performance/perf-regression-predefined-throughput-steps-1-node.yaml", "configurations/performance/single-node/i7i.4xlarge.yaml", "configurations/disable_kms.yaml", "configurations/disable_speculative_retry.yaml", "configurations/baremetal/perf-1-node-lab.yaml"]''',
     local_agent: true,
-    jenkins_label: 'monster',  // the lab agent's own node name, not a pool label
+    jenkins_label: 'minicloud-kvm-builders-artifacts',  // only monster has it; a node name fails the allowlist
     provision_type: 'on_demand',
 )

@@ -10,7 +10,7 @@ longevityPipeline(
     test_name: 'longevity_test.LongevityTest.test_custom_time',
     test_config: '''["test-cases/PR-provision-test.yaml", "configurations/baremetal/loader-monitor-shared-host.yaml"]''',
     local_agent: true,
-    jenkins_label: 'monster',  // the lab agent's own node name, not a pool label
+    jenkins_label: 'minicloud-kvm-builders-artifacts',  // only monster has it; a node name fails the allowlist
     provision_type: 'on_demand',
     // the lab access lookup (run 4b, monster through the lab access service) is not on qa-internal master yet
     qa_internal_repo: 'git@github.com:fruch/scylla-qa-internal.git',

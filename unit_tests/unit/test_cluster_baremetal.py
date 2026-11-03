@@ -1352,6 +1352,19 @@ def test_a_shared_host_records_no_baseline(node_type):
     node.record_host_baseline.assert_not_called()
 
 
+@pytest.mark.parametrize("node_type,disabled", [("db", True), ("loader", False), ("monitor", False)])
+def test_only_a_db_host_gets_its_daily_apt_timers_disabled(monkeypatch, node_type, disabled):
+    """Loader and monitor hosts are shared: their apt-daily timers stay on."""
+    base_disable = MagicMock()
+    monkeypatch.setattr(sdcm_cluster.BaseNode, "disable_daily_triggered_services", base_disable)
+    node = PhysicalMachineNode.__new__(PhysicalMachineNode)
+    node.node_type = node_type
+
+    node.disable_daily_triggered_services()
+
+    assert base_disable.called == disabled
+
+
 def test_each_run_gets_its_own_monitoring_directory():
     node = MagicMock(tags={"TestId": "1234-abcd"})
     node.remoter.run.return_value = MagicMock(stdout="/home/fedora\n")

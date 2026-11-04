@@ -86,7 +86,7 @@ from sdcm.logcollector import (
 from sdcm.mgmt import AnyManagerCluster, ScyllaManagerError
 from sdcm.mgmt.common import get_manager_repo, get_manager_scylla_backend
 from sdcm.monitorstack.ui import AlternatorDashboard, GeminiDashboard
-from sdcm.node_exporter_setup import NodeExporterSetup
+from sdcm.node_exporter_setup import NODE_EXPORTER_DEFAULT_PORT, NodeExporterSetup
 from sdcm.paths import (
     SCYLLA_MANAGER_AGENT_YAML_PATH,
     SCYLLA_MANAGER_TLS_CERT_FILE,
@@ -539,6 +539,9 @@ class BaseNode(AutoSshContainerMixin):
     journal_outlives_run: bool = False
     # a host shared with other jobs keeps its apt-daily timers and unattended-upgrades
     keeps_daily_apt_triggers: bool = False
+
+    # Where the host's node_exporter serves, set by NodeExporterSetup.install on loaders and monitors
+    node_exporter_port: int = NODE_EXPORTER_DEFAULT_PORT
 
     GOSSIP_STATUSES_FILTER_OUT = [
         "LEFT",  # in case the node was decommissioned
@@ -7603,6 +7606,10 @@ class BaseLoaderSet:
         # update repo cache and system after system is up
         node.update_repo_cache()
 
+        # The address the monitor scrapes the loader at. A reused loader finds the exporter setup started, so the
+        # monitor's reconfigure_scylla_monitoring writes its target with the right port
+        node.node_exporter_port = NodeExporterSetup().install(node, scrape_host=normalize_ipv6_url(node.ip_address))
+
         if TestConfig().REUSE_CLUSTER:
             self.kill_stress_thread()
             reconfigure_vector_on_node(node, self.params, TestConfig())
@@ -7610,9 +7617,6 @@ class BaseLoaderSet:
                 self._generate_loader_certs(node)
                 install_client_certificate(node.remoter, node.ip_address, force=True)
             return
-
-        node_exporter_setup = NodeExporterSetup()
-        node_exporter_setup.install(node)
 
         if self.params.get("bare_loaders"):
             node.log.info("Don't install anything because bare loaders requested")
@@ -7895,6 +7899,8 @@ class BaseMonitorSet:
 
         if self.test_config.REUSE_CLUSTER:
             reconfigure_vector_on_node(node, self.params, self.test_config)
+            # Finds the exporter setup started: reconfigure_scylla_monitoring rewrites the monitor's target with its port
+            node.node_exporter_port = self.install_node_exporter(node)
             self.configure_scylla_monitoring(node)
             self.restart_scylla_monitoring(sct_metrics=True)
             set_grafana_url(f"http://{normalize_ipv6_url(node.external_address)}:{self.grafana_port}")
@@ -8024,8 +8030,7 @@ class BaseMonitorSet:
                 node.remoter.sudo(shell_script_cmd(DOCKER_INSTALL_SCRIPT, quote="'"))
             node.remoter.run("sudo usermod -aG docker $USER", change_context=True)
 
-        node_exporter_setup = NodeExporterSetup()
-        node_exporter_setup.install(node)
+        node.node_exporter_port = self.install_node_exporter(node)
 
         docker_hub_login(remoter=node.remoter)
 
@@ -8033,6 +8038,11 @@ class BaseMonitorSet:
         """Fail before any image pull or container start if the host can't run the monitoring stack."""
         docker_host_preflight(node, self.params, "monitor")
         ensure_monitoring_ports_free(node)
+
+    @staticmethod
+    def install_node_exporter(node) -> int:
+        # The monitor's own target is its private address
+        return NodeExporterSetup().install(node, scrape_host=normalize_ipv6_url(node.private_ip_address))
 
     def download_scylla_monitoring(self, node):
         install_script = dedent(
@@ -8145,14 +8155,6 @@ class BaseMonitorSet:
                 templ_yaml = yaml.safe_load(output_file)
                 self.log.debug("Configs %s" % templ_yaml)
 
-            loader_targets_per_dc = {}
-            for loader in self.targets["loaders"].nodes:
-                if loader.region not in loader_targets_per_dc:
-                    loader_targets_per_dc[loader.region] = {"targets": [], "labels": {"dc": loader.region}}
-                loader_ip_addr = getattr(loader, self.DB_NODES_IP_ADDRESS) or ""
-                if loader_ip_addr:
-                    loader_targets_per_dc[loader.region]["targets"].append(f"{normalize_ipv6_url(loader_ip_addr)}:9100")
-
             def update_scrape_configs(base_scrape_configs, static_config_list, job_name="node_exporter"):
                 for i, scrape_config in enumerate(base_scrape_configs):
                     # NOTE: monitoring-4.7 expects that node export metrics are part of exactly the "node_export" job
@@ -8172,7 +8174,6 @@ class BaseMonitorSet:
                     )
 
             scrape_configs = templ_yaml["scrape_configs"]
-            update_scrape_configs(scrape_configs, list(loader_targets_per_dc.values()))
 
             if cloud_prom_bearer_token:
                 cloud_prom_path = self.params.get("cloud_prom_path")
@@ -8352,11 +8353,24 @@ class BaseMonitorSet:
                 targets = ",".join(targets_list)
                 scylla_targets += f"-dc {region}:{targets} "
 
+            # Loaders pick their node_exporter port while the monitors set up, so their targets are written here, where
+            # every call (and the one after setup) rewrites them, rather than once in prometheus.yml
+            loader_targets_per_dc = {}
+            for loader in getattr(self.targets.get("loaders"), "nodes", []):
+                if loader_ip_addr := getattr(loader, self.DB_NODES_IP_ADDRESS):
+                    loader_targets_per_dc.setdefault(loader.region, {"labels": {"dc": loader.region}, "targets": []})[
+                        "targets"
+                    ].append(f"{normalize_ipv6_url(loader_ip_addr)}:{loader.node_exporter_port}")
+            # With cloud Prometheus the DB targets come from there, only the loaders are scraped from here
+            cloud_prometheus = self.params.get("cloud_prom_bearer_token") or (
+                self.params.get("cluster_backend") == "xcloud" and self.promproxy_config
+            )
+
             for node in self.nodes:
                 if "monitor" not in node_export_targets_per_dc:
                     node_export_targets_per_dc["monitor"] = {"labels": {"dc": "monitor"}, "targets": []}
                 node_export_targets_per_dc["monitor"]["targets"].append(
-                    f"{normalize_ipv6_url(node.private_ip_address)}:9100"
+                    f"{normalize_ipv6_url(node.private_ip_address)}:{node.node_exporter_port}"
                 )
 
             for node in self.nodes:
@@ -8374,16 +8388,14 @@ class BaseMonitorSet:
                     f"{self.monitoring_conf_dir}/node_exporter_servers.yml", sudo=False
                 ) as exporter_yaml:
                     exporter_yaml.clear()
-                    for dc_data in node_export_targets_per_dc.values():
-                        exporter_yaml.append(dc_data)
+                    exporter_yaml.extend(loader_targets_per_dc.values())
+                    if not cloud_prometheus:
+                        exporter_yaml.extend(node_export_targets_per_dc.values())
 
-                if self.params.get("cloud_prom_bearer_token") or (
-                    self.params.get("cluster_backend") == "xcloud" and self.promproxy_config
-                ):
+                if cloud_prometheus:
                     node.remoter.run(
                         shell_script_cmd(f"""\
                         echo "targets: [] " > {self.monitoring_conf_dir}/scylla_servers.yml
-                        echo "targets: [] " > {self.monitoring_conf_dir}/node_exporter_servers.yml
                     """),
                         verbose=True,
                     )

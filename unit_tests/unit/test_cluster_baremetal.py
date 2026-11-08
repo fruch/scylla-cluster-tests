@@ -1430,7 +1430,8 @@ def test_access_name_routes_ssh_where_the_lab_access_service_says(monkeypatch):
     localhost.lab_access_ssh_address.return_value = {"hostname": "172.17.0.5", "port": 10027}
     monkeypatch.setattr(TestConfig, "tester_obj", lambda self: MagicMock(localhost=localhost))
 
-    assert node._ssh_address() == {"hostname": "172.17.0.5", "port": 10027}
+    # no SCT key: the access service accepts only `none` auth
+    assert node._ssh_address() == {"hostname": "172.17.0.5", "port": 10027, "key_file": None}
     localhost.lab_access_ssh_address.assert_called_once_with("monster")
 
 

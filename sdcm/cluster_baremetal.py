@@ -573,7 +573,8 @@ class PhysicalMachineNode(PhysicalHostCleanup, cluster.BaseNode):
         if not self._access_name:
             return super()._ssh_address()
         localhost = TestConfig().tester_obj().localhost
-        return localhost.lab_access_ssh_address(self._access_name)
+        # The access service accepts only `none` auth, which the SSH client tries only without a key
+        return {"key_file": None, **localhost.lab_access_ssh_address(self._access_name)}
 
     @property
     def ip_ssh_connections(self) -> str:

@@ -2322,6 +2322,8 @@ class Collector:
                     global_ip=public_ip or private_ip,
                     tags={
                         **self.tags,
+                        # The monitor's install directory is named after the run (MonitorSetPhysical)
+                        "TestId": self.test_id,
                         "NodeType": node_tag,
                     },
                 )

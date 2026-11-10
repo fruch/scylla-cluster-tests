@@ -22,10 +22,10 @@ def call(Map pipelineParams) {
     // build #1, the params-loading build these pipelines abort anyway. Safe to read here, unlike
     // params.minicloud: getJenkinsLabels only ever merges a `minicloud` key into the global
     // binding, never this one.
-    // Gated on minicloudEnabled: without minicloud there is nothing to run on a KVM agent, and
-    // an ungated `local_agent` on a normal build would skip the runner stages while the label
-    // stayed the ordinary cloud builder - the test would then run on the builder itself.
-    def localAgent = minicloudEnabled && (params.local_agent != null
+    // minicloud and baremetal provision nothing on a runner; any other backend still needs its
+    // sct-runner.
+    def baremetal = (params.backend ?: pipelineParams.get('backend', 'aws')) == 'baremetal'
+    def localAgent = (minicloudEnabled || baremetal) && (params.local_agent != null
                                           ? params.local_agent.toString().toBoolean()
                                           : pipelineParams.get('local_agent', false))
 
@@ -123,10 +123,12 @@ def call(Map pipelineParams) {
             // KVM-capable instance_type_runner - is test-case configuration, not a job knob.
             separator(name: 'MINICLOUD_CONFIG', sectionHeader: 'Minicloud Configuration')
             booleanParam(defaultValue: "${pipelineParams.get('local_agent', false)}",
-                   description: 'Run minicloud on a KVM-capable Jenkins agent instead of ' +
-                                'provisioning an sct-runner. Needs an agent serving the ' +
-                                'minicloud label (or set jenkins_label). ' +
-                                'Ignored unless the jenkinsfile sets `minicloud: true`',
+                   description: 'Run the test on the Jenkins agent itself instead of ' +
+                                'provisioning an sct-runner: minicloud on a KVM-capable agent ' +
+                                '(the minicloud label, or set jenkins_label), or a baremetal run ' +
+                                'next to its hosts (set jenkins_label for a lab agent). ' +
+                                'Ignored unless the jenkinsfile sets `minicloud: true` ' +
+                                'or the backend is baremetal',
                    name: 'local_agent')
             string(defaultValue: "${pipelineParams.get('minicloud_docker', '')}",
                    description: 'Minicloud Docker image reference, e.g. ghcr.io/scylladb/minicloud:<tag>. ' +
@@ -255,7 +257,7 @@ def call(Map pipelineParams) {
             string(defaultValue: "${pipelineParams.get('gce_project', '')}",
                description: 'Gce project to use',
                name: 'gce_project')
-            string(defaultValue: '',
+            string(defaultValue: "${pipelineParams.get('jenkins_label', '')}",
                description: 'Pin this build to a specific Jenkins agent label, e.g. a lab machine. ' +
                             'Empty picks the usual builder for the backend/region',
                name: 'jenkins_label')
@@ -344,10 +346,17 @@ def call(Map pipelineParams) {
                         // the rest of the build, so 'Provision Resources' and 'Run SCT Test'
                         // both reach minicloud instead of the real cloud.
                         startMinicloud.exportEnv(params, pipelineParams)
-                        // tag only when not running on a local minicloud agent:
-                        // local agents have no IMDS, so tagBuilder() would fail there.
+                        // A baremetal local agent may still be a cloud builder, so tag it; on a
+                        // lab agent identifyCloud() finds no IMDS and tagBuilder() tags nothing.
                         if (!(minicloudEnabled && localAgent)) {
                             tagBuilder()
+                        }
+                        if (localAgent && !minicloudEnabled) {
+                            // A baremetal lab agent keeps its workspace: sweep old log trees and a
+                            // stale ./sct_runner_ip (minicloud runs do it in 'Minicloud Agent Preflight')
+                            dir('scylla-cluster-tests') {
+                                workspaceReclaim()
+                            }
                         }
                     }
                     dir('scylla-cluster-tests') {
@@ -362,9 +371,9 @@ def call(Map pipelineParams) {
             // Only on a local agent: a persistent workspace needs sweeping, and the agent has to be
             // proven KVM-capable, before anything expensive or externally visible happens - so this
             // sits ahead of 'Create Argus Test Run' and the hydra pull it triggers, not after them.
-            // Reclaim is also the only thing that removes a stale ./sct_runner_ip once 'Create SCT
-            // Runner' is skipped; without it every later stage would take the --execute-on-runner
-            // branch and SSH to an IP from some earlier build.
+            // Reclaim also removes a stale ./sct_runner_ip once 'Create SCT Runner' is skipped (on
+            // baremetal, workspaceReclaim() in 'Checkout' does); without it every later stage would
+            // take the --execute-on-runner branch and SSH to an IP from some earlier build.
             stage('Minicloud Agent Preflight') {
                 when { expression { minicloudEnabled && localAgent } }
                 steps {

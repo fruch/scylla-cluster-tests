@@ -1,0 +1,222 @@
+# Spike E7 (SCT-1491): plain buildx vs Dagger on GitHub Actions. Fork only, manual runs only.
+# Each architecture builds on a native runner (no QEMU), like the dtest image job on Jenkins
+# and scylladb/cql-stress; a merge job joins the per-arch digests into one multi-arch tag.
+name: Spike E7 Dagger
+
+on:
+  # workflow_dispatch only works once the file is on the default branch; the push trigger runs it from the spike
+  # branch, and always publishes.
+  push:
+    branches: [am/e7-dagger-spike]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Push per-arch images to ghcr.io/<owner>/sct-hydra-spike and merge the multi-arch tags"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DAGGER_VERSION: "0.21.11"
+  DO_NOT_TRACK: "1"
+  DAGGER_NO_NAG: "1"
+  IMAGE: ghcr.io/${{ github.repository_owner }}/sct-hydra-spike
+
+jobs:
+  hydra-buildx:
+    if: github.repository != 'scylladb/scylla-cluster-tests'
+    name: hydra buildx ${{ matrix.arch }}
+    runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: tag
+        run: echo "tag=h-$(sha256sum Dockerfile pyproject.toml uv.lock | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The action, not `docker buildx build` in a run: step: type=gha needs ACTIONS_RUNTIME_TOKEN and
+      # ACTIONS_RESULTS_URL, which only JavaScript actions get. In a run: step buildx skips the cache silently.
+      - name: Build (cache from GHA)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=gha,scope=hydra-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=hydra-${{ matrix.arch }}
+          load: true
+          tags: hydra:local
+      - name: Check the binaries match the architecture
+        run: |
+          docker run --rm hydra:local readelf -h /usr/local/bin/kubectl /usr/local/bin/helm /usr/local/bin/eksctl /usr/local/bin/python3 \
+            | grep Machine | tee machines.txt
+          test "$(grep -c '${{ matrix.arch == 'arm64' && 'AArch64' || 'X86-64' }}' machines.txt)" = 4
+      - if: github.event_name == 'push' || inputs.publish
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push by digest
+        id: push
+        if: github.event_name == 'push' || inputs.publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=gha,scope=hydra-${{ matrix.arch }}
+          provenance: false
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,push=true
+      - if: github.event_name == 'push' || inputs.publish
+        run: echo "${{ steps.push.outputs.digest }}" > digest-buildx-${{ matrix.arch }}
+      - if: github.event_name == 'push' || inputs.publish
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-buildx-${{ matrix.arch }}
+          path: digest-buildx-${{ matrix.arch }}
+
+  hydra-dagger:
+    if: github.repository != 'scylladb/scylla-cluster-tests'
+    name: hydra dagger ${{ matrix.arch }}
+    runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Dagger
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=$HOME/.local/bin sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # The default GC keeps 20% of the disk free; runners have less, so it would drop the cache between calls.
+          mkdir -p ~/.config/dagger
+          echo '{"gc": {"reservedSpace": "10GB", "minFreeSpace": "5GB"}}' > ~/.config/dagger/engine.json
+          "$HOME/.local/bin/dagger" version
+      - name: Build (cold engine)
+        run: |
+          start=$SECONDS
+          dagger call hydra --platform linux/${{ matrix.arch }} sync
+          echo "| dagger ${{ matrix.arch }} cold | $((SECONDS - start)) s |" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build again (warm, same runner)
+        run: |
+          start=$SECONDS
+          dagger call hydra --platform linux/${{ matrix.arch }} sync
+          echo "| dagger ${{ matrix.arch }} warm | $((SECONDS - start)) s |" >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the binaries match the architecture
+        run: |
+          dagger call hydra --platform linux/${{ matrix.arch }} \
+            with-exec --args readelf,-h,/usr/local/bin/kubectl,/usr/local/bin/helm,/usr/local/bin/eksctl,/usr/local/bin/python3 stdout \
+            | grep Machine | tee machines.txt
+          test "$(grep -c '${{ matrix.arch == 'arm64' && 'AArch64' || 'X86-64' }}' machines.txt)" = 4
+      - name: Push by digest
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ref=$(dagger call hydra --platform linux/${{ matrix.arch }} \
+            with-registry-auth --address ghcr.io --username ${{ github.actor }} --secret env:GHCR_TOKEN \
+            publish --address "$IMAGE:dagger-${{ matrix.arch }}-${{ github.run_id }}")
+          echo "${ref##*@}" > digest-dagger-${{ matrix.arch }}
+      - if: github.event_name == 'push' || inputs.publish
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-dagger-${{ matrix.arch }}
+          path: digest-dagger-${{ matrix.arch }}
+
+  merge:
+    if: github.event_name == 'push' || inputs.publish
+    needs: [hydra-buildx, hydra-dagger]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # A second copy on Docker Hub, so hydra.sh can fall back from one registry to the other.
+      # Needs the DOCKERHUB_IMAGE variable (e.g. <user>/sct-hydra-spike) and the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets.
+      - if: vars.DOCKERHUB_IMAGE != ''
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Merge per-arch digests into multi-arch tags on GHCR and Docker Hub
+        env:
+          TAG: ${{ needs.hydra-buildx.outputs.tag }}
+          DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+        run: |
+          for tool in buildx dagger; do
+            tags=(-t "$IMAGE:$TAG-$tool")
+            if [[ -n "$DOCKERHUB_IMAGE" ]]; then tags+=(-t "docker.io/$DOCKERHUB_IMAGE:$TAG-$tool"); fi
+            # imagetools copies the blobs across registries: one build, two copies.
+            docker buildx imagetools create "${tags[@]}" \
+              "$IMAGE@$(cat "digest-$tool-amd64")" "$IMAGE@$(cat "digest-$tool-arm64")"
+            for t in "${tags[@]}"; do
+              if [[ "$t" != -t ]]; then
+                docker buildx imagetools inspect "$t"
+                echo "| published | \`$t\` |" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            done
+          done
+          if [[ -z "$DOCKERHUB_IMAGE" ]]; then
+            echo "Docker Hub skipped: set the DOCKERHUB_IMAGE variable and DOCKERHUB_* secrets" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # The PR checks of the root Jenkinsfile (E4 side by side).
+  checks-plain:
+    if: github.repository != 'scylladb/scylla-cluster-tests'
+    name: checks plain ${{ matrix.check.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - {name: pre-commit, cmd: "git config --global --add safe.directory /sct && pre-commit run -a --show-diff-on-failure"}
+          - {name: unit-tests, cmd: "python sct.py unit-tests -n 4"}
+          - {name: collect, cmd: "python -m pytest --collect-only -q -p no:cacheprovider *_test.py"}
+          - {name: lint-pipelines, cmd: "python sct.py lint-pipelines"}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run in the published hydra image
+        run: |
+          start=$SECONDS
+          # --init: without it `bash -c 'python …'` execs python as PID 1, which never reaps orphans, and
+          # test_remote_long_running waits forever on a zombie's /proc entry. Dagger runs an init by default.
+          docker run --rm --init -v "$PWD:/sct" -w /sct -e _SCT_BASE_DIR=/sct \
+            "scylladb/hydra:v$(cat docker/env/version)" bash -c '${{ matrix.check.cmd }}'
+          echo "| plain ${{ matrix.check.name }} (incl. image pull) | $((SECONDS - start)) s |" >> "$GITHUB_STEP_SUMMARY"
+
+  checks-dagger:
+    if: github.repository != 'scylladb/scylla-cluster-tests'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Dagger
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=$HOME/.local/bin sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mkdir -p ~/.config/dagger
+          echo '{"gc": {"reservedSpace": "10GB", "minFreeSpace": "5GB"}}' > ~/.config/dagger/engine.json
+      - name: All checks in one engine (hydra built from the tree, cold)
+        run: |
+          start=$SECONDS
+          dagger call checks
+          echo "| dagger checks (incl. hydra build) | $((SECONDS - start)) s |" >> "$GITHUB_STEP_SUMMARY"

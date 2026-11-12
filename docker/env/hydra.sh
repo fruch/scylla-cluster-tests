@@ -8,11 +8,12 @@ export PYTHONSAFEPATH=true
 CMD=$@
 DOCKER_ENV_DIR=$(readlink -f "$0")
 DOCKER_ENV_DIR=$(dirname "${DOCKER_ENV_DIR}")
-DOCKER_REPO=scylladb/hydra
-DOCKER_REGISTRY=docker.io
+# The repositories that publish the hydra image, in order. A pull that fails moves on to the next one.
+HYDRA_IMAGES=${HYDRA_IMAGES:-docker.io/scylladb/hydra ghcr.io/scylladb/hydra}
 SCT_DIR=$(dirname "${DOCKER_ENV_DIR}")
 SCT_DIR=$(dirname "${SCT_DIR}")
 VERSION=v$(cat "${DOCKER_ENV_DIR}/version")
+HYDRA_IMAGE="${HYDRA_IMAGES%% *}:${VERSION}"
 HOST_NAME=SCT-CONTAINER
 USER_ID=$(id -u "${USER}"):$(id -g "${USER}")
 HOME_DIR=${HOME}
@@ -24,7 +25,7 @@ if [[ -n "${_HYDRA_COMPLETE}" ]]; then
     exec ${tool} run --rm --pull=never -u "${USER_ID}" \
         -v "${SCT_DIR}:${SCT_DIR}" -w "${SCT_DIR}" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
         -e _HYDRA_COMPLETE -e COMP_WORDS -e COMP_CWORD \
-        "${DOCKER_REGISTRY}/${DOCKER_REPO}:${VERSION}" ./sct.py 2>/dev/null
+        "${HYDRA_IMAGE}" ./sct.py 2>/dev/null
 fi
 
 CREATE_RUNNER_INSTANCE=""
@@ -178,11 +179,26 @@ else
   die "Please make sure you install either podman or docker on this machine to run hydra"
 fi
 
-if [[  -n "$JENKINS_URL" || -n "$BUILD_TAG" || -n "$GITHUB_ACTIONS" || -z "`$tool images ${DOCKER_REGISTRY}/${DOCKER_REPO}:${VERSION} -q`" ]]; then
-    echo "Pull version $VERSION from Docker Hub..."
-    $tool pull ${DOCKER_REGISTRY}/${DOCKER_REPO}:${VERSION}
-else
-    echo "There is ${DOCKER_REGISTRY}/${DOCKER_REPO}:${VERSION} in local cache, using it."
+HYDRA_IMAGE=""
+if [[ -z "$JENKINS_URL" && -z "$BUILD_TAG" && -z "$GITHUB_ACTIONS" ]]; then
+    for repo in ${HYDRA_IMAGES}; do
+        if [[ -n "$($tool images "${repo}:${VERSION}" -q)" ]]; then
+            HYDRA_IMAGE="${repo}:${VERSION}"
+            echo "There is ${HYDRA_IMAGE} in local cache, using it."
+            break
+        fi
+    done
+fi
+if [[ -z "${HYDRA_IMAGE}" ]]; then
+    for repo in ${HYDRA_IMAGES}; do
+        echo "Pull version ${VERSION} from ${repo}..."
+        if $tool pull "${repo}:${VERSION}"; then
+            HYDRA_IMAGE="${repo}:${VERSION}"
+            break
+        fi
+        echo "Could not pull ${repo}:${VERSION}, trying the next repository."
+    done
+    [[ -n "${HYDRA_IMAGE}" ]] || die "Could not pull hydra ${VERSION} from any of: ${HYDRA_IMAGES}"
 fi
 
 if [ -z "$HYDRA_DRY_RUN" ]; then
@@ -417,7 +433,7 @@ function run_in_docker () {
         --ulimit nofile=65536:65536 \
         -v /var/lib/systemd/coredump:/var/lib/systemd/coredump \
         --name="${SCT_TEST_ID}_$(date +%s)" \
-        ${DOCKER_REGISTRY}/${DOCKER_REPO}:${VERSION} \
+        ${HYDRA_IMAGE} \
         /bin/bash -c "${PREPARE_CMD}; ${TERM_SET_SIZE} eval '${CMD_TO_RUN}'"
 }
 

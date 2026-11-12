@@ -1,5 +1,6 @@
 import contextlib
 import dataclasses
+import getpass
 import os
 import re
 import shutil
@@ -485,3 +486,37 @@ class TestHydraSh:
             )
 
         assert not errors, f"Case: {cmd}\nReturned:\n{result}\nFound following errors:\n" + ("\n".join(errors))
+
+
+# `docker pull` succeeds only for ghcr.io, as when Docker Hub is down or rate-limits.
+DOCKERHUB_DOWN_DOCKER_STUB = """#!/usr/bin/env bash
+case "$1" in
+    pull) [[ "$2" == ghcr.io/* ]] ;;
+    *) exit 0 ;;
+esac
+"""
+
+
+@pytest.mark.parametrize(
+    "hydra_images, expected_status, expected_output",
+    [
+        pytest.param(None, 0, r"docker run .* ghcr\.io/scylladb/hydra:v", id="falls-back-to-ghcr"),
+        pytest.param("docker.io/x/hydra quay.io/x/hydra", 1, r"Could not pull hydra .* from any of", id="all-fail"),
+    ],
+)
+def test_pull_falls_back_to_next_repository(tmp_path, monkeypatch, hydra_images, expected_status, expected_output):
+    stub = tmp_path / "docker"
+    stub.write_text(DOCKERHUB_DOWN_DOCKER_STUB, encoding="utf-8")
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("BUILD_TAG", "unit-test")  # as on Jenkins: skip the local image cache, always pull
+    monkeypatch.setenv("USER", getpass.getuser())  # hydra.sh runs `id -u "$USER"`; containers often leave USER unset
+    if hydra_images:
+        monkeypatch.setenv("HYDRA_IMAGES", hydra_images)
+
+    result = LocalCmdRunner().run(
+        sct_abs_path("docker/env/hydra.sh") + " --dry-run-hydra list-resources 2>&1", ignore_status=True
+    )
+
+    assert result.return_code == expected_status, result.stdout
+    assert re.search(expected_output, result.stdout), result.stdout

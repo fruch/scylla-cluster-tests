@@ -61,6 +61,8 @@ FROM python:$PYTHON_IMAGE_TAG
 ARG KUBECTL_VERSION=1.34.2
 ARG EKSCTL_VERSION=0.218.0
 ARG HELM_VERSION=3.12.2
+# Set by BuildKit (and Dagger) to amd64 or arm64.
+ARG TARGETARCH
 ENV PYTHONWARNINGS="ignore:unclosed ignore::SyntaxWarning" \
     PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
@@ -99,9 +101,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
         librdkafka1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-RUN curl -fsSLo /usr/local/bin/kubectl https://dl.k8s.io/release/v$KUBECTL_VERSION/bin/linux/amd64/kubectl && \
+RUN curl -fsSLo /usr/local/bin/kubectl https://dl.k8s.io/release/v$KUBECTL_VERSION/bin/linux/$TARGETARCH/kubectl && \
     chmod +x /usr/local/bin/kubectl
-RUN curl --silent --location "https://github.com/eksctl-io/eksctl/releases/download/v$EKSCTL_VERSION/eksctl_Linux_amd64.tar.gz" | tar xz -C /tmp && \
+RUN curl --silent --location "https://github.com/eksctl-io/eksctl/releases/download/v$EKSCTL_VERSION/eksctl_Linux_$TARGETARCH.tar.gz" | tar xz -C /tmp && \
     mv /tmp/eksctl /usr/local/bin
-RUN curl --silent --location  "https://get.helm.sh/helm-v$HELM_VERSION-linux-amd64.tar.gz" | tar xz -C /tmp && mv /tmp/linux-amd64/helm /usr/local/bin
+RUN curl --silent --location  "https://get.helm.sh/helm-v$HELM_VERSION-linux-$TARGETARCH.tar.gz" | tar xz -C /tmp && mv /tmp/linux-$TARGETARCH/helm /usr/local/bin
 COPY --from=python_packages /usr/local /usr/local

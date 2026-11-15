@@ -1,0 +1,16 @@
+#!groovy
+
+// AWS I9g Graviton preview (SCT-1473): perf-simple-query on 1 x i9g.4xlarge, write mode by default
+// (drop perf_simple_write_option.yaml from test_config for read). Paired with the
+// scylla-enterprise-perf-simple-query-microbenchmark-i8g-4xlarge job to compare per-core speed.
+// us-west-2b is the only AZ that had i9g capacity. Not in the triggers: preview instances go away at GA.
+def lib = library identifier: 'sct@snapshot', retriever: legacySCM(scm)
+
+longevityPipeline(
+    backend: 'aws',
+    region: 'us-west-2',
+    availability_zone: 'b',
+    provision_type: 'on_demand',
+    test_name: 'microbenchmarking_test.PerfSimpleQueryTest.test_perf_simple_query',
+    test_config: """["test-cases/microbenchmarking/amazon_perf_simple_query_ARM.yaml", "configurations/performance/perf_simple/perf_simple_write_option.yaml", "configurations/performance/perf_simple/latency-decorator-error-thresholds-perf-simple-query-microbenchmark_arm64.yaml", "configurations/disable_kms.yaml", "configurations/arm_instance_types/i9g_4xlarge.yaml", "configurations/performance/perf_simple/i9g-i8g-microbenchmark.yaml"]""",
+)

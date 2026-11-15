@@ -1,0 +1,6 @@
+# AWS I9g Graviton preview (SCT-1473): perf-simple-query on i9g.4xlarge vs i8g.4xlarge, to compare
+# per-core speed of the two instance types. Used with configurations/arm_instance_types/i{8,9}g_4xlarge.yaml.
+# Storage-optimized instances: use the local NVMe, no EBS data volume (the c7g.large base config adds one).
+data_volume_disk_num: 0
+instance_provision: 'on_demand'
+user_prefix: 'perf-microbenchmarking-i9g-preview'

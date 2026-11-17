@@ -10,4 +10,7 @@ perfRegressionParallelPipeline(
     test_name: "performance_regression_gradual_grow_throughput.PerformanceRegressionPredefinedStepsTest",
     test_config: '''["test-cases/performance/latte-perf-regression-mixed-disk-bound-custom-s1-w1-i8g-8xlarge.yaml", "configurations/performance/latency-decorator-error-thresholds-steps-latte-custom-s1-w1.yaml", "configurations/auth_cassandra.yaml", "configurations/disable_kms.yaml"]''',
     sub_tests: ["test_mixed_gradual_increase_load"],
+    // scratch: run the workload1 rune from scylla-qa-internal#76 before it merges
+    qa_internal_repo: 'git@github.com:fruch/scylla-qa-internal.git',
+    qa_internal_branch: 'custom-s1-disk-bound-sla',
 )

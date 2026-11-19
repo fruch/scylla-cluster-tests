@@ -1,0 +1,17 @@
+# Single-node write overlay (i9g vs i8g, for AWS): 1 DB node, RF=1, unthrottled write step only.
+# Same per-node volume as the 3-node test: 1.61B rows of 1 KB.
+# Loaders: 2 x c7i.16xlarge = 128 vCPU, the same loader CPU as the 3-node test (4 x c7i.8xlarge),
+# which drove 708K op/s there; each loader runs the same command on half of the key range.
+n_db_nodes: 1
+n_loaders: 2
+instance_type_loader: 'c7i.16xlarge'
+
+prepare_stress_cmd: "cassandra-stress write cl=ALL n=1 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=8 cql3 native -rate 'threads=1' -col 'size=FIXED(1024) n=FIXED(1)'"
+
+stress_cmd_w: [
+  "cassandra-stress write cl=ONE n=805306368 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=16 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..805306368",
+  "cassandra-stress write cl=ONE n=805306368 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=16 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=805306369..1610612736"
+]
+
+perf_gradual_threads: {"read": 620, "write": 800, "mixed": 1900, "read_disk_only": 620}
+perf_gradual_throttle_steps: {"read": ['500000', '900000', '1200000', '1500000', 'unthrottled'], "mixed": ['250000', '480000', '600000', '750000', 'unthrottled'], "write": ['unthrottled'], "read_disk_only": ['110000', '220000', '330000', '400000', 'unthrottled']}

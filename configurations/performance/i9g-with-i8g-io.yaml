@@ -1,0 +1,7 @@
+# Experiment (SCT-1473): run i9g with the disk profile the ScyllaDB AMI ships for i8g.4xlarge, instead of
+# measuring the i9g disks with iotune. Both node types then share one IO scheduler setup, so a remaining
+# write gap comes from CPU and memory. Put this file after arm_instance_types/i9g_4xlarge.yaml.
+force_run_iotune: false
+scylla_d_overrides_files:
+  - 'configurations/performance/i8g-4xlarge-io/io_properties.yaml'
+  - 'configurations/performance/i8g-4xlarge-io/io.conf'

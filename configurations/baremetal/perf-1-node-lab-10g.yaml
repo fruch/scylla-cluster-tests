@@ -1,0 +1,24 @@
+# SCT-1215: the 10 GbE layout, layered after perf-1-node-lab.yaml. The DB node is minipc5 (Intel X710 at 10 Gb/s);
+# monster (SCT, monitor) and mini-spider1 are the two loaders, both on 1 GbE, so the loaders' links are the
+# ceiling, not the DB node's. The hosts config is sct/baremetal_sct1215_perf_10g.json in the KeyStore.
+s3_baremetal_config: baremetal_sct1215_perf_10g
+n_loaders: 2
+# minipc5 has 16 threads and 44 GB: leave 2 threads and about 8 GB to the OS and the Jenkins agent
+append_scylla_args: '--smp 14 --memory 36G --blocked-reactor-notify-ms 5 --abort-on-lsa-bad-alloc 1 --abort-on-seastar-bad-alloc --abort-on-internal-error 1 --abort-on-ebadf 1'
+
+# round_robin hands each command of a list to the next loader: one command per loader, each on half the rows
+prepare_write_cmd: [
+  "cassandra-stress write  cl=ONE n=10000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=8 cql3 native -rate threads=200 throttle=37500/s -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=1..10000000",
+  "cassandra-stress write  cl=ONE n=10000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=8 cql3 native -rate threads=200 throttle=37500/s -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=10000001..20000000"
+]
+
+stress_cmd_cache_warmup: [
+  "cassandra-stress read  cl=ONE n=1000000 -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..1000000",
+  "cassandra-stress read  cl=ONE n=1000000 -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1000001..2000000"
+]
+
+# Each loader runs $threads (perf_gradual_threads) of its own
+stress_cmd_m: [
+  "cassandra-stress mixed no-warmup  cl=ONE duration=$duration -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..2000000",
+  "cassandra-stress mixed no-warmup  cl=ONE duration=$duration -mode connectionsPerHost=8 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..2000000"
+]

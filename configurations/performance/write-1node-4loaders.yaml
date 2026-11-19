@@ -1,0 +1,12 @@
+# Fallback for write-1node.yaml when c7i.16xlarge has no capacity: 4 x c7i.8xlarge (same 128 vCPU, the
+# 3-node test's loader type), 400 threads each (same 1,600 in flight), each on a quarter of the 1.61B keys.
+# Put this file after write-1node.yaml.
+n_loaders: 4
+instance_type_loader: 'c7i.8xlarge'
+stress_cmd_w: [
+  "cassandra-stress write cl=ONE n=402653184 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=16 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..402653184",
+  "cassandra-stress write cl=ONE n=402653184 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=16 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=402653185..805306368",
+  "cassandra-stress write cl=ONE n=402653184 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=16 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=805306369..1207959552",
+  "cassandra-stress write cl=ONE n=402653184 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=1)' -mode connectionsPerHost=16 cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1207959553..1610612736"
+]
+perf_gradual_threads: {"read": 620, "write": 400, "mixed": 1900, "read_disk_only": 620}

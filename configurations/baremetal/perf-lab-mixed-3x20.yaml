@@ -1,0 +1,4 @@
+# SCT-1215: three 20-minute unthrottled mixed rounds in one run, layered last on any lab layout overlay.
+# About 2 hours: setup and the dataset (~25 min) + 3 x (20 min + up to ~4 min compaction wait) + teardown (~20 min).
+perf_gradual_throttle_steps: {"read": ['unthrottled'], "mixed": ['unthrottled', 'unthrottled', 'unthrottled'], "write": ['unthrottled'], "read_disk_only": ['unthrottled']}
+perf_gradual_step_duration: {"read": '5m', "write": None, "mixed": '20m', "read_disk_only": '5m'}

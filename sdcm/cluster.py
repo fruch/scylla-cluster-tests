@@ -5503,6 +5503,8 @@ class BaseScyllaCluster:
 
         for config_file_path in self.params.get("scylla_d_overrides_files"):
             config_file = Path(get_sct_root_path()) / config_file_path
+            # remote_file() stats the target; images without an io preset (i9g) have no io_properties.yaml yet
+            node.remoter.sudo(f"touch /etc/scylla.d/{config_file.name}")
             with remote_file(remoter=node.remoter, remote_path=f"/etc/scylla.d/{config_file.name}", sudo=True) as fobj:
                 fobj.truncate(0)  # first clear the file
                 fobj.write(config_file.read_text())

@@ -23,6 +23,7 @@ from sdcm.sct_config import SCTConfiguration
 from sdcm.sct_provision.common.types import NodeTypeType
 from sdcm.sct_provision.user_data_objects import SctUserDataObject
 from sdcm.sct_provision.user_data_objects.apt_daily_triggers import DisableAptTriggersUserDataObject
+from sdcm.sct_provision.user_data_objects.block_loader_ssh import BlockLoaderSshUserDataObject
 from sdcm.sct_provision.user_data_objects.boot_console import (
     BootJournalToConsoleUserDataObject,
     OciRunCommandSudoUserDataObject,
@@ -253,6 +254,7 @@ class DefinitionBuilder(abc.ABC):
             ScyllaUserDataObject,
             DockerUserDataObject,
             SctAgentUserDataObject,
+            BlockLoaderSshUserDataObject,
         ]
         user_data_objects = [
             klass(test_config=self.test_config, params=self.params, instance_name=instance_name, node_type=node_type)

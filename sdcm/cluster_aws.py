@@ -34,7 +34,7 @@ from mypy_boto3_ec2.service_resource import EC2ServiceResource
 
 from sdcm import ec2_client, cluster, wait
 from sdcm.ec2_client import CreateSpotInstancesError
-from sdcm.provision.aws.utils import configure_set_preserve_hostname_script
+from sdcm.provision.aws.utils import configure_set_preserve_hostname_script, joins_placement_group
 from sdcm.provision.common.utils import configure_hosts_set_hostname_script
 from sdcm.provision.network_configuration import (
     NetworkInterface,
@@ -120,6 +120,8 @@ class AWSCluster(cluster.BaseCluster):
         self.placement_group_name = PlacementGroup(
             params=params, common_tags=self.test_config.common_tags(), test_id=self.test_config.test_id()
         ).placement_group_name
+        if not joins_placement_group(params, node_type):
+            self.placement_group_name = None
 
         super().__init__(
             cluster_uuid=cluster_uuid,

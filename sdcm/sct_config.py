@@ -1200,6 +1200,16 @@ class SCTConfiguration(dict):
             help="if true, create 'cluster' placement group for test case "
             "for low-latency network performance achievement",
         ),
+        dict(
+            name="aws_placement_group_strategy",
+            env="SCT_AWS_PLACEMENT_GROUP_STRATEGY",
+            type=str,
+            choices=["cluster", "spread"],
+            help="""Strategy of the placement group created when use_placement_group is true.
+             'cluster' (default): DB and loader nodes are packed close together, for the lowest network latency.
+             'spread': each DB node goes on separate hardware (its own rack), so DB nodes never share a host;
+             loader nodes stay out of the group. AWS allows at most 7 instances per spread group per AZ.""",
+        ),
         dict(name="subnet_id", env="SCT_SUBNET_ID", type=str_or_list, help="AWS subnet ids to use"),
         dict(
             name="ami_id_db_scylla", env="SCT_AMI_ID_DB_SCYLLA", type=str, help="AMS AMI id to use for scylla db node"
@@ -4220,6 +4230,13 @@ class SCTConfiguration(dict):
                 f"Number of Regions({regions_count}) and AZ({az_count}) should be 1 "
                 f"when param use_placement_group is used"
             )
+            if self.get("cluster_backend") == "aws" and self.get("aws_placement_group_strategy") == "spread":
+                db_nodes = sum(int(i) for i in str(self.get("n_db_nodes")).split())
+                assert db_nodes <= 7, (
+                    f"aws_placement_group_strategy 'spread' holds at most 7 instances per AZ, got {db_nodes} DB nodes"
+                )
+                for param in ("use_capacity_reservation", "use_dedicated_host"):
+                    assert not self.get(param), f"aws_placement_group_strategy 'spread' can't be used with {param}"
 
     def _validate_scylla_d_overrides_files_exists(self):
         if scylla_d_overrides_files := self.get("scylla_d_overrides_files"):
